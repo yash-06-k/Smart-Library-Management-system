@@ -6,7 +6,8 @@ import PageHeader from '../../components/PageHeader';
 import StatCard from '../../components/StatCard';
 import BulkImportPanel from '../../components/BulkImportPanel';
 import ReportDownloadPanel from '../../components/ReportDownloadPanel';
-import { getAdminMetrics, getBorrowRecords } from '../../services/api';
+import BookCover from '../../components/BookCover';
+import { getAdminMetrics, getBorrowRecords, getBooks } from '../../services/api';
 
 export default function LibrarianDashboard() {
   const [loading, setLoading] = useState(true);
@@ -20,13 +21,15 @@ export default function LibrarianDashboard() {
     total_borrow_records: 0,
   });
   const [latestRecords, setLatestRecords] = useState([]);
+  const [books, setBooks] = useState([]);
 
   const load = async (mountedRef) => {
     setLoading(true);
     try {
-      const [metricsResponse, recordsResponse] = await Promise.all([
+      const [metricsResponse, recordsResponse, booksResponse] = await Promise.all([
         getAdminMetrics(),
         getBorrowRecords(),
+        getBooks(),
       ]);
 
       if (mountedRef && !mountedRef.current) {
@@ -35,6 +38,7 @@ export default function LibrarianDashboard() {
 
       setMetrics(metricsResponse.data);
       setLatestRecords(recordsResponse.data.slice(0, 6));
+      setBooks(booksResponse.data || []);
     } finally {
       if (!mountedRef || mountedRef.current) {
         setLoading(false);
@@ -104,6 +108,44 @@ export default function LibrarianDashboard() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="glass-card rounded-2xl p-5 mt-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Catalog Snapshot</h3>
+            <p className="text-xs text-slate-400">Latest books from the library collection.</p>
+          </div>
+          <button
+            onClick={() => window.location.assign('/manage-books')}
+            className="rounded-xl bg-slate-900/70 border border-white/10 px-4 py-2 text-sm hover:bg-slate-900"
+          >
+            Manage Books
+          </button>
+        </div>
+
+        {books.length === 0 ? (
+          <p className="text-sm text-slate-400">No books available right now.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {books.slice(0, 6).map((book) => (
+              <article key={book._id} className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 flex gap-4">
+                <BookCover
+                  src={book.cover_image}
+                  title={book.title}
+                  author={book.author}
+                  className="w-16 h-20 flex-shrink-0"
+                />
+                <div className="space-y-1">
+                  <p className="text-xs text-cyan-300 uppercase tracking-wide">{book.category}</p>
+                  <h4 className="font-semibold text-white line-clamp-2">{book.title}</h4>
+                  <p className="text-xs text-slate-400">by {book.author}</p>
+                  <p className="text-xs text-emerald-300">{book.available_copies} copies available</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

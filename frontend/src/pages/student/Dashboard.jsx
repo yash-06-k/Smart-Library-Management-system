@@ -3,6 +3,7 @@ import { BookOpen, Clock3, History, ScanLine, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import LoadingState from '../../components/LoadingState';
+import BookCover from '../../components/BookCover';
 import PageHeader from '../../components/PageHeader';
 import ScannerModal from '../../components/ScannerModal';
 import StatCard from '../../components/StatCard';
@@ -64,6 +65,10 @@ export default function StudentDashboard() {
 
     return { active, dueSoon, history };
   }, [borrowRecords]);
+
+  const featuredBooks = useMemo(() => {
+    return books.slice(0, 6);
+  }, [books]);
 
   const recommendedBooks = useMemo(() => {
     const borrowedBookIds = new Set(derived.active.map((record) => record.book_id));
@@ -138,6 +143,44 @@ export default function StudentDashboard() {
           </div>
         </div>
         {scanError ? <p className="text-xs text-rose-300 mt-3">{scanError}</p> : null}
+      </section>
+
+      <section className="glass-card rounded-2xl p-5 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Library Shelf</h3>
+            <p className="text-xs text-slate-400">Recent additions from the catalog.</p>
+          </div>
+          <button
+            onClick={() => navigate('/browse-books')}
+            className="rounded-xl bg-slate-900/70 border border-white/10 px-4 py-2 text-sm hover:bg-slate-900"
+          >
+            Browse All
+          </button>
+        </div>
+
+        {featuredBooks.length === 0 ? (
+          <p className="text-sm text-slate-400">No books available right now.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {featuredBooks.map((book) => (
+              <article key={book._id} className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 flex gap-4">
+                <BookCover
+                  src={book.cover_image}
+                  title={book.title}
+                  author={book.author}
+                  className="w-16 h-20 flex-shrink-0"
+                />
+                <div className="space-y-1">
+                  <p className="text-xs text-cyan-300 uppercase tracking-wide">{book.category}</p>
+                  <h4 className="font-semibold text-white line-clamp-2">{book.title}</h4>
+                  <p className="text-xs text-slate-400">by {book.author}</p>
+                  <p className="text-xs text-emerald-300">{book.available_copies} copies available</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="glass-card rounded-2xl p-5">
