@@ -19,6 +19,19 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const detail = error?.response?.data?.detail;
+    if (Array.isArray(detail)) {
+      error.response.data.detail = detail.map((item) => item?.msg || 'Validation error').join(', ');
+    } else if (detail && typeof detail === 'object') {
+      error.response.data.detail = JSON.stringify(detail);
+    }
+    return Promise.reject(error);
+  }
+);
+
 const isNotFound = (error) => {
   const status = error?.response?.status;
   return status === 404 || status === 405;
