@@ -11,6 +11,7 @@ import { getAdminMetrics, getBorrowRecords, getBooks } from '../../services/api'
 
 export default function LibrarianDashboard() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [metrics, setMetrics] = useState({
     total_books: 0,
     available_books: 0,
@@ -25,6 +26,7 @@ export default function LibrarianDashboard() {
 
   const load = async (mountedRef) => {
     setLoading(true);
+    setError('');
     try {
       const [metricsResponse, recordsResponse, booksResponse] = await Promise.all([
         getAdminMetrics(),
@@ -39,6 +41,10 @@ export default function LibrarianDashboard() {
       setMetrics(metricsResponse.data);
       setLatestRecords(recordsResponse.data.slice(0, 6));
       setBooks(booksResponse.data || []);
+    } catch (requestError) {
+      if (!mountedRef || mountedRef.current) {
+        setError(requestError.response?.data?.detail || requestError.message || 'Failed to load dashboard data.');
+      }
     } finally {
       if (!mountedRef || mountedRef.current) {
         setLoading(false);
@@ -62,6 +68,7 @@ export default function LibrarianDashboard() {
   return (
     <div>
       <PageHeader title="Librarian Dashboard" subtitle="Real-time view of books, students, and active borrowing." />
+      {error ? <p className="text-rose-300 text-sm mb-4">{error}</p> : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
         <StatCard title="Total Books" value={metrics.total_books} icon={LibraryBig} tone="indigo" delay={0.05} />

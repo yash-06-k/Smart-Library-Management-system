@@ -7,6 +7,23 @@ from ..auth.security import get_current_student, get_current_librarian
 
 router = APIRouter()
 
+@router.get("/history")
+async def get_my_borrows(user: dict = Depends(get_current_student)):
+    db = get_db()
+    cursor = db["borrows"].find({"student_id": user["_id"]}).sort("issue_date", -1)
+    borrows = await cursor.to_list(length=100)
+    for b in borrows:
+        b["_id"] = str(b["_id"])
+        b["student_id"] = str(b["student_id"])
+        b["book_id"] = str(b["book_id"])
+        
+        book = await db["books"].find_one({"_id": ObjectId(b["book_id"])})
+        if book:
+            b["book_title"] = book.get("title", b["book_id"])
+            b["category"] = book.get("category", "General")
+            
+    return borrows
+
 @router.post("/request/{book_id}")
 async def request_book(book_id: str, user: dict = Depends(get_current_student)):
     db = get_db()

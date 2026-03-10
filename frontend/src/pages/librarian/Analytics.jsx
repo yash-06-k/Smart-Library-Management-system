@@ -8,6 +8,7 @@ import { BarChart3, BookOpenText, CalendarClock, UsersRound } from 'lucide-react
 
 export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [metrics, setMetrics] = useState({
     total_books: 0,
     available_books: 0,
@@ -24,6 +25,7 @@ export default function AnalyticsPage() {
 
     const load = async () => {
       setLoading(true);
+      setError('');
       try {
         const [metricsResponse, recordsResponse] = await Promise.all([
           getAdminMetrics(),
@@ -36,6 +38,10 @@ export default function AnalyticsPage() {
 
         setMetrics(metricsResponse.data);
         setRecords(recordsResponse.data);
+      } catch (requestError) {
+        if (mounted) {
+          setError(requestError.response?.data?.detail || requestError.message || 'Failed to load analytics.');
+        }
       } finally {
         if (mounted) {
           setLoading(false);
@@ -83,6 +89,7 @@ export default function AnalyticsPage() {
   return (
     <div>
       <PageHeader title="Analytics" subtitle="Borrow behavior and category demand trends." />
+      {error ? <p className="text-rose-300 text-sm mb-4">{error}</p> : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <StatCard title="Total Records" value={metrics.total_borrow_records} icon={BarChart3} tone="indigo" />

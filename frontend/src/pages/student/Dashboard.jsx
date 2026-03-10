@@ -12,6 +12,7 @@ import { borrowBook, getBooks, getBorrowRecords, getNotifications } from '../../
 export default function StudentDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [borrowRecords, setBorrowRecords] = useState([]);
   const [books, setBooks] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -24,6 +25,7 @@ export default function StudentDashboard() {
 
     const load = async () => {
       setLoading(true);
+      setError('');
       try {
         const [borrowResponse, booksResponse] = await Promise.all([
           getBorrowRecords(),
@@ -39,6 +41,10 @@ export default function StudentDashboard() {
         setBorrowRecords(borrowResponse.data);
         setBooks(booksResponse.data);
         setNotifications(notificationsResponse.data || []);
+      } catch (requestError) {
+        if (mounted) {
+          setError(requestError.response?.data?.detail || requestError.message || 'Failed to load dashboard.');
+        }
       } finally {
         if (mounted) {
           setLoading(false);
@@ -111,6 +117,7 @@ export default function StudentDashboard() {
   return (
     <div>
       <PageHeader title="Student Dashboard" subtitle="Track borrowed books, due dates, and personalized recommendations." />
+      {error ? <p className="text-rose-300 text-sm mb-4">{error}</p> : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <StatCard title="Borrowed Books" value={derived.active.length} icon={BookOpen} tone="indigo" delay={0.05} />

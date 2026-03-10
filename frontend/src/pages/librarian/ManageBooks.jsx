@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
-import QRCode from 'qrcode';
-
 import LoadingState from '../../components/LoadingState';
 import PageHeader from '../../components/PageHeader';
 import ScannerModal from '../../components/ScannerModal';
 import BookCover from '../../components/BookCover';
+import QrCodePreview from '../../components/QrCodePreview';
 import { createBook, deleteBook, getBooks, updateBook } from '../../services/api';
 
 const defaultFormState = {
@@ -20,6 +19,9 @@ const defaultFormState = {
   available_copies: 1,
   cover_image: '',
 };
+
+const normalizeIsbn = (value) => String(value || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+const resolveBookId = (book) => book?._id || book?.id || '';
 
 export default function ManageBooks() {
   const navigate = useNavigate();
@@ -35,7 +37,6 @@ export default function ManageBooks() {
   const [scannedBook, setScannedBook] = useState(null);
   const [scanNotice, setScanNotice] = useState('');
   const [qrModalBook, setQrModalBook] = useState(null);
-  const [qrUrl, setQrUrl] = useState('');
 
   const loadBooks = async () => {
     setLoading(true);
@@ -102,7 +103,7 @@ export default function ManageBooks() {
   };
 
   const startEdit = (book) => {
-    setEditingId(book._id);
+    setEditingId(resolveBookId(book));
     setFormState({
       title: book.title,
       author: book.author,
@@ -121,13 +122,14 @@ export default function ManageBooks() {
     setScannedBook(null);
     setScanNotice('');
     try {
-      const response = await getBooks({ search: isbn });
-      const match = (response.data || []).find((book) => book.isbn === isbn);
+      const cleanedIsbn = normalizeIsbn(isbn);
+      const response = await getBooks({ search: cleanedIsbn });
+      const match = (response.data || []).find((book) => normalizeIsbn(book.isbn) === cleanedIsbn);
       if (match) {
         setScannedBook(match);
         setScanNotice('ISBN matched an existing book. You can view or edit it.');
       } else {
-        setFormState((prev) => ({ ...prev, isbn }));
+        setFormState((prev) => ({ ...prev, isbn: cleanedIsbn }));
         setScanNotice('ISBN not found. Fill the remaining fields to add this book quickly.');
       }
     } catch (requestError) {
@@ -138,30 +140,6 @@ export default function ManageBooks() {
   const handleShowQr = async (book) => {
     setQrModalBook(book);
   };
-
-  useEffect(() => {
-    let active = true;
-    const buildQr = async () => {
-      if (!qrModalBook?._id) {
-        setQrUrl('');
-        return;
-      }
-      try {
-        const url = await QRCode.toDataURL(qrModalBook._id, { margin: 1, width: 220 });
-        if (active) {
-          setQrUrl(url);
-        }
-      } catch {
-        if (active) {
-          setQrUrl('');
-        }
-      }
-    };
-    buildQr();
-    return () => {
-      active = false;
-    };
-  }, [qrModalBook]);
 
   const filteredBooks = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -259,7 +237,7 @@ export default function ManageBooks() {
             </button>
             {scannedBook ? (
               <button
-                onClick={() => navigate(`/books/${scannedBook._id}`)}
+                onClick={() => navigate(`/books/${resolveBookId(scannedBook)}`)}
                 className="rounded-xl bg-cyan-500/20 border border-cyan-300/30 px-4 py-2 text-sm hover:bg-cyan-500/30"
               >
                 View Scanned Book
@@ -293,7 +271,7 @@ export default function ManageBooks() {
             </thead>
             <tbody>
               {filteredBooks.map((book) => (
-                <tr key={book._id} className="border-t border-white/10">
+                <tr key={resolveBookId(book)} className="border-t border-white/10">
                   <td className="py-3">
                     <BookCover
                       src={book.cover_image}
@@ -316,7 +294,7 @@ export default function ManageBooks() {
                       <button onClick={() => handleShowQr(book)} className="p-2 rounded-lg bg-cyan-500/20 border border-cyan-300/20 hover:bg-cyan-500/30">
                         QR
                       </button>
-                      <button onClick={() => handleDelete(book._id)} className="p-2 rounded-lg bg-rose-500/20 border border-rose-300/20 hover:bg-rose-500/30">
+                      <button onClick={() => handleDelete(resolveBookId(book))} className="p-2 rounded-lg bg-rose-500/20 border border-rose-300/20 hover:bg-rose-500/30">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -357,13 +335,17 @@ export default function ManageBooks() {
               </button>
             </div>
             <p className="text-sm text-slate-400">{qrModalBook.title}</p>
-            {qrUrl ? (
-              <img src={qrUrl} alt="Book QR" className="w-56 h-56 mx-auto rounded-xl border border-white/10 bg-white p-3" />
-            ) : (
-              <div className="w-56 h-56 mx-auto rounded-xl border border-white/10 bg-slate-900/70 flex items-center justify-center text-xs text-slate-400">
-                QR not available
-              </div>
-            )}
+            <QrCodePreview
+              value={resolveBookId(qrModalBook)}
+              size={220}
+              alt="Book QR"
+              className="w-56 h-56 mx-auto rounded-xl border border-white/10 bg-white p-3"
+              emptyLabel={
+                <div className="w-56 h-56 mx-auto rounded-xl border border-white/10 bg-slate-900/70 flex items-center justify-center text-xs text-slate-400">
+                  QR not available
+                </div>
+              }
+            />
             <div className="flex justify-center">
               <button
                 onClick={() => navigate(`/books/${qrModalBook._id}`)}

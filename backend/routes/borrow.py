@@ -24,6 +24,35 @@ def _find_student(student_id: str):
     return None
 
 
+def _normalize_isbn(value: str | None) -> str:
+    if not value:
+        return ""
+    return "".join([ch for ch in value if ch.isdigit() or ch in "Xx"]).upper()
+
+
+def _find_book_by_id_or_isbn(db, book_id: str):
+    snapshot = db.books.document(book_id).get()
+    if snapshot.exists:
+        return snapshot
+
+    matches = list(db.books.where("isbn", "==", book_id).limit(1).stream())
+    if matches:
+        return matches[0]
+
+    normalized = _normalize_isbn(book_id)
+    if normalized and len(normalized) in (8, 10, 13):
+        for doc in db.books.stream():
+            if not doc.exists:
+                continue
+            book = doc_to_dict(doc)
+            if not book:
+                continue
+            if _normalize_isbn(book.get("isbn")) == normalized:
+                return doc
+
+    return None
+
+
 def _normalize_student_id(payload_student_id: str | None, current_user: dict) -> str:
     if current_user["role"] == "student":
         if payload_student_id and payload_student_id != current_user["_id"] and payload_student_id != current_user["firebase_uid"]:
@@ -48,10 +77,11 @@ def _borrow_book(payload: BorrowRequest, current_user: dict):
         raise HTTPException(status_code=400, detail="Borrow record must be assigned to a student user")
 
     book_ref = db.books.document(payload.book_id)
-    book_snapshot = book_ref.get()
-    if not book_snapshot.exists:
+    book_snapshot = _find_book_by_id_or_isbn(db, payload.book_id)
+    if not book_snapshot:
         raise HTTPException(status_code=404, detail="Book not found")
     book = doc_to_dict(book_snapshot)
+    book_ref = db.books.document(book["_id"])
 
     if (book.get("available_copies") or 0) <= 0:
         raise HTTPException(status_code=400, detail="Book is currently unavailable")
@@ -100,11 +130,7 @@ def create_manual_borrow_record(payload: BorrowRequest, current_user: dict = Dep
 
 
 @router.get("/borrow-records")
-def list_borrow_records(
-    student_id: str | None = Query(default=None),
-    status: str | None = Query(default=None),
-    current_user: dict = Depends(get_current_student),
-):
+def _list_borrow_records(current_user: dict, student_id: str | None, status: str | None):
     db = get_db()
 
     query = db.borrow_records
@@ -112,9 +138,6 @@ def list_borrow_records(
         query = query.where("student_id", "==", current_user["_id"])
     elif student_id:
         query = query.where("student_id", "==", student_id)
-
-    if status:
-        query = query.where("status", "==", status)
 
     records = [doc_to_dict(doc) for doc in query.stream() if doc.exists]
     records.sort(key=lambda record: record.get("borrow_date") or datetime.min, reverse=True)
@@ -124,18 +147,48 @@ def list_borrow_records(
         if record.get("status") == "Borrowed" and record.get("due_date") and record["due_date"] < now:
             record["status"] = "Overdue"
 
+    if status:
+        records = [record for record in records if record.get("status") == status]
+
     return [serialize_document(record) for record in records]
+
+
+@router.get("/borrow-records")
+def list_borrow_records(
+    student_id: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    current_user: dict = Depends(get_current_student),
+):
+    return _list_borrow_records(current_user, student_id, status)
+
+
+@router.get("/borrow/history")
+def legacy_borrow_history(
+    student_id: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    current_user: dict = Depends(get_current_student),
+):
+    return _list_borrow_records(current_user, student_id, status)
+
+
+@router.get("/admin/borrow-history")
+def legacy_admin_borrow_history(
+    student_id: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    current_user: dict = Depends(get_current_librarian),
+):
+    return _list_borrow_records(current_user, student_id, status)
 
 
 @router.post("/reserve")
 def reserve_book(payload: ReserveRequest, current_user: dict = Depends(get_current_student)):
     db = get_db()
 
-    book_ref = db.books.document(payload.book_id)
-    book_snapshot = book_ref.get()
-    if not book_snapshot.exists:
+    book_snapshot = _find_book_by_id_or_isbn(db, payload.book_id)
+    if not book_snapshot:
         raise HTTPException(status_code=404, detail="Book not found")
     book = doc_to_dict(book_snapshot)
+    book_ref = db.books.document(book["_id"])
 
     if (book.get("available_copies") or 0) > 0:
         raise HTTPException(status_code=400, detail="Book is available. Borrow it instead of reserving.")
@@ -232,7 +285,10 @@ def _mark_returned(record_id: str, current_user: dict, return_date: datetime | N
 def return_by_book(book_id: str, current_user: dict = Depends(get_current_student)):
     db = get_db()
 
-    query = db.borrow_records.where("book_id", "==", book_id).where("status", "in", ["Borrowed", "Overdue"])
+    resolved_snapshot = _find_book_by_id_or_isbn(db, book_id)
+    resolved_id = doc_to_dict(resolved_snapshot)["_id"] if resolved_snapshot else book_id
+
+    query = db.borrow_records.where("book_id", "==", resolved_id).where("status", "in", ["Borrowed", "Overdue"])
     if current_user["role"] == "student":
         query = query.where("student_id", "==", current_user["_id"])
     query = query.limit(1)
@@ -260,6 +316,11 @@ def admin_mark_returned(borrow_record_id: str, current_user: dict = Depends(get_
     return _mark_returned(borrow_record_id, current_user)
 
 
+@router.put("/admin/borrow-history/{borrow_record_id}/mark-returned")
+def legacy_mark_returned(borrow_record_id: str, current_user: dict = Depends(get_current_librarian)):
+    return _mark_returned(borrow_record_id, current_user)
+
+
 @router.put("/borrow-records/{borrow_record_id}/extend")
 def extend_due_date(
     borrow_record_id: str,
@@ -284,6 +345,15 @@ def extend_due_date(
     return serialize_document(updated)
 
 
+@router.put("/admin/borrow-history/{borrow_record_id}/extend")
+def legacy_extend_due_date(
+    borrow_record_id: str,
+    payload: ExtendBorrowRequest,
+    current_user: dict = Depends(get_current_librarian),
+):
+    return extend_due_date(borrow_record_id, payload, current_user)
+
+
 @router.delete("/borrow-records/{borrow_record_id}")
 def delete_borrow_record(borrow_record_id: str, current_user: dict = Depends(get_current_librarian)):
     db = get_db()
@@ -301,3 +371,13 @@ def delete_borrow_record(borrow_record_id: str, current_user: dict = Depends(get
 
     record_ref.delete()
     return {"message": "Borrow record deleted"}
+
+
+@router.delete("/admin/borrow-history/{borrow_record_id}")
+def legacy_delete_borrow_record(borrow_record_id: str, current_user: dict = Depends(get_current_librarian)):
+    return delete_borrow_record(borrow_record_id, current_user)
+
+
+@router.post("/admin/borrow-history/manual")
+def legacy_create_manual_borrow_record(payload: BorrowRequest, current_user: dict = Depends(get_current_librarian)):
+    return create_manual_borrow_record(payload, current_user)

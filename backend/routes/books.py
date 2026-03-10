@@ -52,6 +52,12 @@ def _attach_status(book: dict, borrowed_map: dict[str, int], reserved_map: dict[
     return book
 
 
+def _normalize_isbn(value: str | None) -> str:
+    if not value:
+        return ""
+    return "".join([ch for ch in value if ch.isdigit() or ch in "Xx"]).upper()
+
+
 @router.get("/books")
 def list_books(
     category: str | None = Query(default=None),
@@ -69,14 +75,22 @@ def list_books(
 
     if search:
         needle = search.lower()
-        books = [
-            book
-            for book in books
-            if needle in (book.get("title") or "").lower()
-            or needle in (book.get("author") or "").lower()
-            or needle in (book.get("category") or "").lower()
-            or needle in (book.get("isbn") or "").lower()
-        ]
+        normalized_search = _normalize_isbn(search)
+
+        def matches(book: dict) -> bool:
+            if needle in (book.get("title") or "").lower():
+                return True
+            if needle in (book.get("author") or "").lower():
+                return True
+            if needle in (book.get("category") or "").lower():
+                return True
+            if needle in (book.get("isbn") or "").lower():
+                return True
+            if normalized_search and len(normalized_search) in (8, 10, 13):
+                return _normalize_isbn(book.get("isbn")) == normalized_search
+            return False
+
+        books = [book for book in books if matches(book)]
 
     books.sort(key=lambda item: (item.get("title") or "").lower())
     borrowed_map, reserved_map = _build_book_status_maps(db)

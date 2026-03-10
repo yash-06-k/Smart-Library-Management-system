@@ -54,6 +54,15 @@ def get_admin_metrics(current_user: dict = Depends(get_current_librarian)):
     }
 
 
+@router.get("/admin/analytics")
+def get_admin_analytics(current_user: dict = Depends(get_current_librarian)):
+    metrics = get_admin_metrics(current_user)
+    return {
+        "metrics": metrics,
+        "message": "Analytics fetched successfully",
+    }
+
+
 @router.get("/notifications")
 def list_notifications(current_user: dict = Depends(get_current_student)):
     db = get_db()

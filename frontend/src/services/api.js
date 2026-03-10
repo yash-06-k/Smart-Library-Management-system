@@ -19,13 +19,17 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-const isNotFound = (error) => error?.response?.status === 404;
+const isNotFound = (error) => {
+  const status = error?.response?.status;
+  return status === 404 || status === 405;
+};
 
 const withResponseData = (response, data) => ({ ...response, data });
 
 const normalizeBorrowRecords = (records) =>
   records.map((record) => ({
     ...record,
+    _id: record._id || record.id,
     borrow_date: record.borrow_date || record.issue_date,
     due_date: record.due_date,
     return_date: record.return_date ?? null,
@@ -33,6 +37,20 @@ const normalizeBorrowRecords = (records) =>
     book_title: record.book_title || record.book_id || 'Unknown Book',
     category: record.category || 'General',
   }));
+
+const normalizeBook = (book) => {
+  if (!book || typeof book !== 'object') {
+    return book;
+  }
+  return {
+    ...book,
+    _id: book._id || book.id,
+    available_copies: book.available_copies ?? book.availableCopies ?? 0,
+    total_copies: book.total_copies ?? book.totalCopies ?? book.available_copies ?? 0,
+  };
+};
+
+const normalizeBooks = (books) => (Array.isArray(books) ? books.map(normalizeBook) : books);
 
 const normalizeAdminMetrics = (data) => {
   if (!data || typeof data !== 'object') {
@@ -95,25 +113,25 @@ export const getBooks = (params = {}) =>
   requestWithFallback([
     () => api.get('/api/books/', { params }),
     () => api.get('/books', { params }),
-  ]);
+  ]).then((response) => withResponseData(response, normalizeBooks(response.data)));
 
 export const getBookById = (bookId) =>
   requestWithFallback([
     () => api.get(`/api/books/${bookId}`),
     () => api.get(`/books/${bookId}`),
-  ]);
+  ]).then((response) => withResponseData(response, normalizeBook(response.data)));
 
 export const createBook = (payload) =>
   requestWithFallback([
     () => api.post('/api/books/', payload),
     () => api.post('/books', payload),
-  ]);
+  ]).then((response) => withResponseData(response, normalizeBook(response.data)));
 
 export const updateBook = (bookId, payload) =>
   requestWithFallback([
     () => api.put(`/api/books/${bookId}`, payload),
     () => api.put(`/books/${bookId}`, payload),
-  ]);
+  ]).then((response) => withResponseData(response, normalizeBook(response.data)));
 
 export const deleteBook = (bookId) =>
   requestWithFallback([
@@ -125,12 +143,17 @@ export const bulkCreateBooks = (payload) =>
   requestWithFallback([
     () => api.post('/api/books/bulk', payload),
     () => api.post('/books/bulk', payload),
-  ]);
+  ]).then((response) => withResponseData(response, normalizeBooks(response.data?.created || []).length ? {
+    ...response.data,
+    created: normalizeBooks(response.data.created || []),
+  } : response.data));
 
 export const borrowBook = (payload) =>
   requestWithFallback([
     () => api.post('/api/borrow', payload),
     () => api.post('/borrow', payload),
+    () => api.post(`/api/borrow/request/${payload.book_id}`),
+    () => api.post(`/borrow/request/${payload.book_id}`),
   ]);
 
 export const reserveBook = (payload) =>
@@ -143,14 +166,20 @@ export const getBorrowRecords = async (params = {}) => {
   const dualPrefix = await requestWithFallback([
     () => api.get('/api/borrow-records', { params }),
     () => api.get('/borrow-records', { params }),
+    () => api.get('/api/admin/borrow-history', { params }),
+    () => api.get('/api/borrow/history', { params }),
+    () => api.get('/admin/borrow-history', { params }),
+    () => api.get('/borrow/history', { params }),
   ]);
   return withResponseData(dualPrefix, normalizeBorrowRecords(dualPrefix.data || []));
 };
 
 export const returnBook = (borrowRecordId) =>
   requestWithFallback([
-    () => api.put(`/api/borrow/return/${borrowRecordId}`),
+    () => api.post('/api/return', { borrow_record_id: borrowRecordId }),
     () => api.post('/return', { borrow_record_id: borrowRecordId }),
+    () => api.put(`/api/borrow/return/${borrowRecordId}`),
+    () => api.put(`/borrow/return/${borrowRecordId}`),
   ]);
 
 export const returnBookByBookId = (bookId) =>
@@ -161,29 +190,50 @@ export const returnBookByBookId = (bookId) =>
 
 export const markBorrowReturned = (borrowRecordId) =>
   requestWithFallback([
-    () => api.put(`/api/borrow/return/${borrowRecordId}`),
+    () => api.put(`/api/borrow-records/${borrowRecordId}/mark-returned`),
     () => api.put(`/borrow-records/${borrowRecordId}/mark-returned`),
+    () => api.put(`/api/admin/borrow-history/${borrowRecordId}/mark-returned`),
+    () => api.put(`/admin/borrow-history/${borrowRecordId}/mark-returned`),
   ]);
 
 export const extendBorrow = (borrowRecordId, dueDate) =>
-  api.put(`/borrow-records/${borrowRecordId}/extend`, { due_date: dueDate });
+  requestWithFallback([
+    () => api.put(`/api/borrow-records/${borrowRecordId}/extend`, { due_date: dueDate }),
+    () => api.put(`/borrow-records/${borrowRecordId}/extend`, { due_date: dueDate }),
+    () => api.put(`/api/admin/borrow-history/${borrowRecordId}/extend`, { due_date: dueDate }),
+    () => api.put(`/admin/borrow-history/${borrowRecordId}/extend`, { due_date: dueDate }),
+  ]);
 
 export const deleteBorrowRecord = (borrowRecordId) =>
-  api.delete(`/borrow-records/${borrowRecordId}`);
+  requestWithFallback([
+    () => api.delete(`/api/borrow-records/${borrowRecordId}`),
+    () => api.delete(`/borrow-records/${borrowRecordId}`),
+    () => api.delete(`/api/admin/borrow-history/${borrowRecordId}`),
+    () => api.delete(`/admin/borrow-history/${borrowRecordId}`),
+  ]);
 
 export const createManualBorrowRecord = (payload) =>
-  api.post('/borrow-records/manual', payload);
+  requestWithFallback([
+    () => api.post('/api/borrow-records/manual', payload),
+    () => api.post('/borrow-records/manual', payload),
+    () => api.post('/api/admin/borrow-history/manual', payload),
+    () => api.post('/admin/borrow-history/manual', payload),
+  ]);
 
 export const getUsers = (params = {}) =>
   requestWithFallback([
     () => api.get('/api/users', { params }),
     () => api.get('/users', { params }),
+    () => api.get('/api/admin/students', { params }),
+    () => api.get('/admin/students', { params }),
   ]);
 
 export const getAdminMetrics = async () => {
   const response = await requestWithFallback([
     () => api.get('/api/admin/metrics'),
     () => api.get('/admin/metrics'),
+    () => api.get('/api/admin/analytics'),
+    () => api.get('/admin/analytics'),
   ]);
 
   return withResponseData(response, normalizeAdminMetrics(response.data));
