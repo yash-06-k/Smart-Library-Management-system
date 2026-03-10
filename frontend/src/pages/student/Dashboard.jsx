@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Clock3, History, ScanLine, Sparkles } from 'lucide-react';
+import { BookOpen, Clock3, History, ScanLine, Sparkles, Timer } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import LoadingState from '../../components/LoadingState';
@@ -72,6 +72,15 @@ export default function StudentDashboard() {
     return { active, dueSoon, history };
   }, [borrowRecords]);
 
+  const nextDue = useMemo(() => {
+    const upcoming = derived.active
+      .filter((record) => record.due_date)
+      .map((record) => new Date(record.due_date))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime());
+    return upcoming[0] || null;
+  }, [derived.active]);
+
   const featuredBooks = useMemo(() => {
     return books.slice(0, 6);
   }, [books]);
@@ -125,6 +134,38 @@ export default function StudentDashboard() {
         <StatCard title="Borrow History" value={derived.history.length} icon={History} tone="cyan" delay={0.15} />
         <StatCard title="Recommendations" value={recommendedBooks.length} icon={Sparkles} tone="emerald" delay={0.2} />
       </div>
+
+      <section className="glass-card rounded-2xl p-5 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Reading Timeline</h3>
+            <p className="text-xs text-slate-400">Track upcoming due dates and active borrows.</p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-300">
+            <Timer size={14} className="text-amber-300" />
+            {nextDue ? `Next due: ${nextDue.toLocaleDateString()}` : 'No upcoming due dates'}
+          </div>
+        </div>
+        {derived.active.length === 0 ? (
+          <p className="text-sm text-slate-400 mt-3">You have no active borrows right now.</p>
+        ) : (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+            {derived.active.slice(0, 4).map((record) => (
+              <div key={record._id} className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                <p className="text-white font-medium">{record.book_title}</p>
+                <p className="text-xs text-slate-400 mt-1">Due: {record.due_date ? new Date(record.due_date).toLocaleDateString() : 'Not set'}</p>
+                <span className={`inline-flex items-center mt-2 px-2 py-0.5 rounded-full text-xs border ${
+                  record.status === 'Overdue'
+                    ? 'border-rose-300/30 bg-rose-500/10 text-rose-200'
+                    : 'border-emerald-300/30 bg-emerald-500/10 text-emerald-200'
+                }`}>
+                  {record.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="glass-card rounded-2xl p-5 mb-6">
         <div className="flex flex-wrap items-center justify-between gap-3">

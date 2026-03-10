@@ -89,6 +89,10 @@ export default function ManageBooks() {
   };
 
   const handleDelete = async (bookId) => {
+    if (!bookId) {
+      setError('Missing book ID. Please refresh and try again.');
+      return;
+    }
     const confirmed = window.confirm('Delete this book?');
     if (!confirmed) {
       return;
@@ -103,7 +107,12 @@ export default function ManageBooks() {
   };
 
   const startEdit = (book) => {
-    setEditingId(resolveBookId(book));
+    const id = resolveBookId(book);
+    if (!id) {
+      setError('Missing book ID. Please refresh and try again.');
+      return;
+    }
+    setEditingId(id);
     setFormState({
       title: book.title,
       author: book.author,
@@ -138,6 +147,10 @@ export default function ManageBooks() {
   };
 
   const handleShowQr = async (book) => {
+    if (!resolveBookId(book) && !book?.isbn) {
+      setError('QR not available: missing book ID/ISBN.');
+      return;
+    }
     setQrModalBook(book);
   };
 
@@ -323,8 +336,8 @@ export default function ManageBooks() {
       />
 
       {qrModalBook ? (
-        <div className="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-950/90 shadow-xl p-5 space-y-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-950/95 shadow-2xl p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-white font-semibold">Book QR Code</h3>
               <button
@@ -335,17 +348,27 @@ export default function ManageBooks() {
               </button>
             </div>
             <p className="text-sm text-slate-400">{qrModalBook.title}</p>
-            <QrCodePreview
-              value={resolveBookId(qrModalBook) || qrModalBook?.isbn}
-              size={220}
-              alt="Book QR"
-              className="w-56 h-56 mx-auto rounded-xl border border-white/10 bg-white p-3"
-              emptyLabel={
-                <div className="w-56 h-56 mx-auto rounded-xl border border-white/10 bg-slate-900/70 flex items-center justify-center text-xs text-slate-400">
-                  QR not available
-                </div>
-              }
-            />
+            {(() => {
+              const qrValue = resolveBookId(qrModalBook) || qrModalBook?.isbn || '';
+              return (
+                <>
+                  <QrCodePreview
+                    value={qrValue}
+                    size={220}
+                    alt="Book QR"
+                    className="w-56 h-56 mx-auto rounded-xl border border-white/10 bg-white p-3"
+                    emptyLabel={
+                      <div className="w-56 h-56 mx-auto rounded-xl border border-white/10 bg-slate-900/70 flex items-center justify-center text-xs text-slate-400 text-center px-6">
+                        QR not available. Missing book ID/ISBN.
+                      </div>
+                    }
+                  />
+                  <div className="rounded-xl border border-white/10 bg-slate-900/70 p-3 text-xs text-slate-300 break-all">
+                    <span className="text-slate-400">QR value:</span> {qrValue || 'Unavailable'}
+                  </div>
+                </>
+              );
+            })()}
             <div className="flex justify-center">
               <button
                 onClick={() => navigate(`/books/${qrModalBook._id}`)}

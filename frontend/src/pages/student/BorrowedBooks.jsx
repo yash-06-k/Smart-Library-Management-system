@@ -94,8 +94,12 @@ export default function BorrowedBooks() {
                 <tr key={record._id} className="border-t border-white/10">
                   <td className="px-4 py-3 text-white">{record.book_title}</td>
                   <td className="px-4 py-3 text-slate-300">{record.category}</td>
-                  <td className="px-4 py-3 text-slate-300">{new Date(record.borrow_date).toLocaleDateString()}</td>
-                  <td className="px-4 py-3 text-slate-300">{new Date(record.due_date).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-slate-300">
+                    {record.borrow_date ? new Date(record.borrow_date).toLocaleDateString() : '-'}
+                  </td>
+                  <td className="px-4 py-3 text-slate-300">
+                    {record.due_date ? new Date(record.due_date).toLocaleDateString() : '-'}
+                  </td>
                   <td className="px-4 py-3 text-slate-300">{record.status}</td>
                   <td className="px-4 py-3">
                     <button

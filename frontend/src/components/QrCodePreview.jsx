@@ -10,11 +10,13 @@ export default function QrCodePreview({
 }) {
   const [dataUrl, setDataUrl] = useState('');
   const [svgMarkup, setSvgMarkup] = useState('');
+  const [fallbackUrl, setFallbackUrl] = useState('');
 
   useEffect(() => {
     let active = true;
     setDataUrl('');
     setSvgMarkup('');
+    setFallbackUrl('');
 
     if (!value) {
       return () => {
@@ -37,8 +39,8 @@ export default function QrCodePreview({
           }
         } catch {
           if (active) {
-            setDataUrl('');
-            setSvgMarkup('');
+            const remoteUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(payload)}`;
+            setFallbackUrl(remoteUrl);
           }
         }
       }
@@ -62,6 +64,10 @@ export default function QrCodePreview({
         dangerouslySetInnerHTML={{ __html: svgMarkup }}
       />
     );
+  }
+
+  if (fallbackUrl) {
+    return <img src={fallbackUrl} alt={alt} className={className} />;
   }
 
   if (typeof emptyLabel !== 'string') {
