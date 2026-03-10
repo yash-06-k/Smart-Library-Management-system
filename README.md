@@ -5,7 +5,7 @@ This is a production-level, fully featured modern Smart Library system combining
 ## ðŸš€ Step 1: Backend Setup (FastAPI + Firestore)
 
 ### 1. Configure the Environment
-Inside `backend/.env` (Create this file):
+Copy `backend/.env.example` to `backend/.env` and fill values:
 ```env
 FIREBASE_CREDENTIALS=path/to/firebase-adminsdk.json
 OPENAI_API_KEY=sk-your-openai-key
@@ -37,11 +37,12 @@ Check `http://localhost:8000/docs` to see your completely auto-generated Swagger
 ## ðŸ’» Step 2: Frontend Setup (React + Firebase Auth)
 
 ### 1. Configure Firebase Credentials
-Set your client-side Firebase configuration in `frontend/.env` (Vite reads `VITE_` variables).
+Copy `frontend/.env.example` to `frontend/.env` and fill values (Vite reads `VITE_` variables).
 1. Go to [Firebase Console](https://console.firebase.google.com).
 2. Create a new project and add a "Web App."
 3. Enable "Email/Password" and "Google" under the **Authentication** tab.
 4. Copy the config into `frontend/.env` (see existing `VITE_FIREBASE_*` keys).
+5. Set `VITE_API_BASE_URL` to your backend URL (example: `https://your-service.onrender.com`).
 
 ### 2. Start the Development Server
 ```bash

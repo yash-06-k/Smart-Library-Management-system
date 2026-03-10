@@ -129,7 +129,7 @@ export const bulkCreateBooks = (payload) =>
 
 export const borrowBook = (payload) =>
   requestWithFallback([
-    () => api.post(`/api/borrow/request/${payload.book_id}`),
+    () => api.post('/api/borrow', payload),
     () => api.post('/borrow', payload),
   ]);
 
