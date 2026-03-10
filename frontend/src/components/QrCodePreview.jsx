@@ -23,14 +23,15 @@ export default function QrCodePreview({
     }
 
     const build = async () => {
+      const payload = String(value);
       try {
-        const url = await QRCode.toDataURL(value, { margin: 1, width: size });
+        const url = await QRCode.toDataURL(payload, { margin: 1, width: size });
         if (active) {
           setDataUrl(url);
         }
       } catch {
         try {
-          const svgText = await QRCode.toString(value, { type: 'svg', margin: 1, width: size });
+          const svgText = await QRCode.toString(payload, { type: 'svg', margin: 1, width: size });
           if (active) {
             setSvgMarkup(svgText);
           }

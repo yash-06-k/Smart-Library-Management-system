@@ -103,7 +103,11 @@ def get_book(book_id: str, current_user: dict = Depends(get_current_student)):
     db = get_db()
     snapshot = db.books.document(book_id).get()
     if not snapshot.exists:
-        raise HTTPException(status_code=404, detail="Book not found")
+        matches = list(db.books.where("isbn", "==", book_id).limit(1).stream())
+        if matches:
+            snapshot = matches[0]
+        else:
+            raise HTTPException(status_code=404, detail="Book not found")
 
     book = doc_to_dict(snapshot)
     borrowed_map, reserved_map = _build_book_status_maps(db)

@@ -336,7 +336,7 @@ export default function ManageBooks() {
             </div>
             <p className="text-sm text-slate-400">{qrModalBook.title}</p>
             <QrCodePreview
-              value={resolveBookId(qrModalBook)}
+              value={resolveBookId(qrModalBook) || qrModalBook?.isbn}
               size={220}
               alt="Book QR"
               className="w-56 h-56 mx-auto rounded-xl border border-white/10 bg-white p-3"

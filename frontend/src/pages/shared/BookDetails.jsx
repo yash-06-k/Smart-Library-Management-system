@@ -95,7 +95,7 @@ export default function BookDetailsPage() {
         <aside className="glass-card rounded-2xl p-5 flex flex-col items-center gap-4">
           <h3 className="text-white font-semibold">Book QR Code</h3>
           <QrCodePreview
-            value={book?._id || book?.id || bookId}
+            value={book?._id || book?.id || book?.isbn || bookId}
             size={240}
             alt="Book QR code"
             className="w-56 h-56 rounded-xl border border-white/10 bg-white p-3"
