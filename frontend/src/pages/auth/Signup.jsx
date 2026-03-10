@@ -30,6 +30,7 @@ export default function Signup() {
     }
 
     try {
+      sessionStorage.setItem('PREFERRED_ROLE', form.role);
       const credential = await createUserWithEmailAndPassword(auth, form.email, form.password);
       await updateProfile(credential.user, { displayName: form.name });
 
@@ -40,6 +41,7 @@ export default function Signup() {
           role: form.role,
           firebase_uid: credential.user.uid,
         });
+        sessionStorage.removeItem('PREFERRED_ROLE');
       } catch (e) {
         console.warn("Backend sync failed during signup:", e);
       }

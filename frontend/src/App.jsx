@@ -117,15 +117,18 @@ export default function App() {
           const status = backendError?.response?.status;
           if (status === 404 && firebaseUser.email) {
             try {
+              const preferredRole = sessionStorage.getItem("PREFERRED_ROLE");
+              const desiredRole = preferredRole === "librarian" ? "librarian" : "student";
               const signupResponse = await signupUser({
                 name: userName,
                 email: firebaseUser.email,
-                role: 'student',
+                role: desiredRole,
                 firebase_uid: firebaseUser.uid,
               });
-              userRole = signupResponse.data.role || 'student';
+              userRole = signupResponse.data.role || desiredRole;
               userName = signupResponse.data.name || userName;
               userId = signupResponse.data._id || userId;
+              sessionStorage.removeItem("PREFERRED_ROLE");
             } catch (signupError) {
               console.warn("Auto signup failed after missing user:", signupError);
             }
@@ -158,6 +161,7 @@ export default function App() {
     setUser(null);
     sessionStorage.removeItem("MOCK_ROLE");
     sessionStorage.removeItem("MOCK_NAME");
+    sessionStorage.removeItem("PREFERRED_ROLE");
   };
 
   const roleHomeElement = useMemo(() => {
