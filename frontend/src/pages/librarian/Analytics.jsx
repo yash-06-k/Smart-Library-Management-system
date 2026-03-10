@@ -9,6 +9,7 @@ import { BarChart3, BookOpenText, CalendarClock, UsersRound } from 'lucide-react
 export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
   const [metrics, setMetrics] = useState({
     total_books: 0,
     available_books: 0,
@@ -23,11 +24,46 @@ export default function AnalyticsPage() {
   useEffect(() => {
     let mounted = true;
 
+    const resolveMetric = (value, fallback) => (Number.isFinite(value) ? value : fallback);
+
+    const deriveMetricsFromRecords = (items) => {
+      const now = new Date();
+      const studentIds = new Set();
+      let borrowed = 0;
+      let overdue = 0;
+
+      items.forEach((record) => {
+        if (record.student_id) {
+          studentIds.add(record.student_id);
+        }
+        const isBorrowed = record.status === 'Borrowed' || record.status === 'Overdue';
+        if (isBorrowed) {
+          borrowed += 1;
+        }
+        if (record.status === 'Overdue') {
+          overdue += 1;
+        } else if (record.status === 'Borrowed' && record.due_date) {
+          const dueDate = new Date(record.due_date);
+          if (!Number.isNaN(dueDate.valueOf()) && dueDate < now) {
+            overdue += 1;
+          }
+        }
+      });
+
+      return {
+        total_students: studentIds.size,
+        borrowed_books: borrowed,
+        overdue_books: overdue,
+        total_borrow_records: items.length,
+      };
+    };
+
     const load = async () => {
       setLoading(true);
       setError('');
+      setWarning('');
       try {
-        const [metricsResponse, recordsResponse] = await Promise.all([
+        const [metricsResult, recordsResult] = await Promise.allSettled([
           getAdminMetrics(),
           getBorrowRecords(),
         ]);
@@ -36,8 +72,32 @@ export default function AnalyticsPage() {
           return;
         }
 
-        setMetrics(metricsResponse.data);
-        setRecords(recordsResponse.data);
+        const warnings = [];
+        const recordsData = recordsResult.status === 'fulfilled' ? (recordsResult.value.data || []) : [];
+        if (recordsResult.status === 'rejected') {
+          warnings.push(recordsResult.reason?.response?.data?.detail || recordsResult.reason?.message || 'Borrow records unavailable');
+        }
+
+        const metricsData = metricsResult.status === 'fulfilled' ? (metricsResult.value.data || {}) : {};
+        if (metricsResult.status === 'rejected') {
+          warnings.push(metricsResult.reason?.response?.data?.detail || metricsResult.reason?.message || 'Metrics unavailable');
+        }
+
+        const derived = deriveMetricsFromRecords(recordsData);
+        const resolved = {
+          ...metrics,
+          ...metricsData,
+          total_students: resolveMetric(metricsData.total_students, derived.total_students),
+          borrowed_books: resolveMetric(metricsData.borrowed_books, derived.borrowed_books),
+          overdue_books: resolveMetric(metricsData.overdue_books, derived.overdue_books),
+          total_borrow_records: resolveMetric(metricsData.total_borrow_records, derived.total_borrow_records),
+        };
+
+        setRecords(recordsData);
+        setMetrics(resolved);
+        if (warnings.length) {
+          setWarning(warnings.join(' | '));
+        }
       } catch (requestError) {
         if (mounted) {
           setError(requestError.response?.data?.detail || requestError.message || 'Failed to load analytics.');
@@ -90,6 +150,7 @@ export default function AnalyticsPage() {
     <div>
       <PageHeader title="Analytics" subtitle="Borrow behavior and category demand trends." />
       {error ? <p className="text-rose-300 text-sm mb-4">{error}</p> : null}
+      {warning ? <p className="text-amber-200 text-xs mb-4">{warning}</p> : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <StatCard title="Total Records" value={metrics.total_borrow_records} icon={BarChart3} tone="indigo" />

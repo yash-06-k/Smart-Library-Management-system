@@ -65,6 +65,18 @@ const normalizeBook = (book) => {
 
 const normalizeBooks = (books) => (Array.isArray(books) ? books.map(normalizeBook) : books);
 
+const normalizeUser = (user) => {
+  if (!user || typeof user !== 'object') {
+    return user;
+  }
+  return {
+    ...user,
+    _id: user._id || user.id || user.firebase_uid,
+  };
+};
+
+const normalizeUsers = (users) => (Array.isArray(users) ? users.map(normalizeUser) : users);
+
 const normalizeAdminMetrics = (data) => {
   if (!data || typeof data !== 'object') {
     return data;
@@ -176,15 +188,29 @@ export const reserveBook = (payload) =>
   ]);
 
 export const getBorrowRecords = async (params = {}) => {
+  const { status, ...serverParams } = params || {};
   const dualPrefix = await requestWithFallback([
-    () => api.get('/api/borrow-records', { params }),
-    () => api.get('/borrow-records', { params }),
-    () => api.get('/api/admin/borrow-history', { params }),
-    () => api.get('/api/borrow/history', { params }),
-    () => api.get('/admin/borrow-history', { params }),
-    () => api.get('/borrow/history', { params }),
+    () => api.get('/api/borrow-records', { params: serverParams }),
+    () => api.get('/borrow-records', { params: serverParams }),
+    () => api.get('/api/admin/borrow-history', { params: serverParams }),
+    () => api.get('/api/borrow/history', { params: serverParams }),
+    () => api.get('/admin/borrow-history', { params: serverParams }),
+    () => api.get('/borrow/history', { params: serverParams }),
   ]);
-  return withResponseData(dualPrefix, normalizeBorrowRecords(dualPrefix.data || []));
+  let records = normalizeBorrowRecords(dualPrefix.data || []);
+  if (status) {
+    const now = new Date();
+    records = records.filter((record) => {
+      if (record.status === status) {
+        return true;
+      }
+      if (status === 'Overdue' && record.status === 'Borrowed' && record.due_date) {
+        return new Date(record.due_date) < now;
+      }
+      return false;
+    });
+  }
+  return withResponseData(dualPrefix, records);
 };
 
 export const returnBook = (borrowRecordId) =>
@@ -239,7 +265,10 @@ export const getUsers = (params = {}) =>
     () => api.get('/users', { params }),
     () => api.get('/api/admin/students', { params }),
     () => api.get('/admin/students', { params }),
-  ]);
+  ]).then((response) => {
+    const payload = response.data?.users || response.data?.students || response.data;
+    return withResponseData(response, normalizeUsers(payload));
+  });
 
 export const getAdminMetrics = async () => {
   const response = await requestWithFallback([

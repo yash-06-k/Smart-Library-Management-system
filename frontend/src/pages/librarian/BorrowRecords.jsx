@@ -39,14 +39,38 @@ export default function BorrowRecordsPage() {
     setError('');
 
     try {
-      const [recordsResponse, studentsResponse, booksResponse] = await Promise.all([
+      const [recordsResult, studentsResult, booksResult] = await Promise.allSettled([
         getBorrowRecords(),
         getUsers({ role: 'student' }),
         getBooks(),
       ]);
-      setRecords(recordsResponse.data);
-      setStudents(studentsResponse.data);
-      setBooks(booksResponse.data);
+
+      const errors = [];
+
+      if (recordsResult.status === 'fulfilled') {
+        setRecords(recordsResult.value.data || []);
+      } else {
+        errors.push(recordsResult.reason?.response?.data?.detail || recordsResult.reason?.message || 'Borrow records unavailable');
+        setRecords([]);
+      }
+
+      if (studentsResult.status === 'fulfilled') {
+        setStudents(studentsResult.value.data || []);
+      } else {
+        errors.push(studentsResult.reason?.response?.data?.detail || studentsResult.reason?.message || 'Students list unavailable');
+        setStudents([]);
+      }
+
+      if (booksResult.status === 'fulfilled') {
+        setBooks(booksResult.value.data || []);
+      } else {
+        errors.push(booksResult.reason?.response?.data?.detail || booksResult.reason?.message || 'Books list unavailable');
+        setBooks([]);
+      }
+
+      if (errors.length) {
+        setError(errors.join(' | '));
+      }
     } catch (requestError) {
       setError(requestError.response?.data?.detail || 'Failed to load borrow records');
     } finally {
@@ -204,6 +228,7 @@ export default function BorrowRecordsPage() {
   };
 
   const issueBook = books.find((book) => book._id === issueBookId);
+  const hasStudents = students.length > 0;
 
   if (loading) {
     return <LoadingState label="Loading borrow records..." />;
@@ -233,17 +258,28 @@ export default function BorrowRecordsPage() {
       </div>
 
       <form onSubmit={submitManualRecord} className="glass-card rounded-2xl p-4 mb-5 grid grid-cols-1 md:grid-cols-[1fr_1fr_220px_auto] gap-3">
-        <select
-          value={manualForm.student_id}
-          onChange={(event) => setManualForm((prev) => ({ ...prev, student_id: event.target.value }))}
-          className="field"
-          required
-        >
-          <option value="">Select Student</option>
-          {students.map((student) => (
-            <option key={student._id} value={student._id}>{student.name} ({student.email})</option>
-          ))}
-        </select>
+        {hasStudents ? (
+          <select
+            value={manualForm.student_id}
+            onChange={(event) => setManualForm((prev) => ({ ...prev, student_id: event.target.value }))}
+            className="field"
+            required
+          >
+            <option value="">Select Student</option>
+            {students.map((student) => (
+              <option key={student._id} value={student._id}>{student.name} ({student.email})</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={manualForm.student_id}
+            onChange={(event) => setManualForm((prev) => ({ ...prev, student_id: event.target.value }))}
+            className="field"
+            placeholder="Enter student email or UID"
+            required
+          />
+        )}
 
         <select
           value={manualForm.book_id}
@@ -357,16 +393,26 @@ export default function BorrowRecordsPage() {
               <p className="text-sm text-slate-400">Select a student to issue this book.</p>
             )}
 
-            <select
-              value={issueStudentId}
-              onChange={(event) => setIssueStudentId(event.target.value)}
-              className="field"
-            >
-              <option value="">Select Student</option>
-              {students.map((student) => (
-                <option key={student._id} value={student._id}>{student.name} ({student.email})</option>
-              ))}
-            </select>
+            {hasStudents ? (
+              <select
+                value={issueStudentId}
+                onChange={(event) => setIssueStudentId(event.target.value)}
+                className="field"
+              >
+                <option value="">Select Student</option>
+                {students.map((student) => (
+                  <option key={student._id} value={student._id}>{student.name} ({student.email})</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={issueStudentId}
+                onChange={(event) => setIssueStudentId(event.target.value)}
+                className="field"
+                placeholder="Enter student email or UID"
+              />
+            )}
 
             <input
               type="date"

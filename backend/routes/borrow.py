@@ -129,7 +129,6 @@ def create_manual_borrow_record(payload: BorrowRequest, current_user: dict = Dep
     return _borrow_book(payload, current_user)
 
 
-@router.get("/borrow-records")
 def _list_borrow_records(current_user: dict, student_id: str | None, status: str | None):
     db = get_db()
 
