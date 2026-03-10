@@ -78,6 +78,13 @@ function RequireLibrarian({ user, children }) {
   return children;
 }
 
+function RequireStudent({ user, children }) {
+  if (!user || user.role !== 'student') {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
 function ProtectedLayout({ user, onLogout }) {
   const navItems = user.role === 'librarian' ? librarianNavigation : studentNavigation;
 
@@ -196,11 +203,11 @@ export default function App() {
         >
           <Route path="/" element={roleHomeElement} />
 
-          <Route path="/browse-books" element={<BrowseBooks />} />
-          <Route path="/borrowed-books" element={<BorrowedBooks />} />
-          <Route path="/history" element={<HistoryPage />} />
-          <Route path="/wishlist" element={<WishlistPage />} />
-          <Route path="/ai-librarian" element={<StudentAIPage />} />
+          <Route path="/browse-books" element={<RequireStudent user={user}><BrowseBooks /></RequireStudent>} />
+          <Route path="/borrowed-books" element={<RequireStudent user={user}><BorrowedBooks /></RequireStudent>} />
+          <Route path="/history" element={<RequireStudent user={user}><HistoryPage /></RequireStudent>} />
+          <Route path="/wishlist" element={<RequireStudent user={user}><WishlistPage /></RequireStudent>} />
+          <Route path="/ai-librarian" element={<RequireStudent user={user}><StudentAIPage /></RequireStudent>} />
 
           <Route path="/manage-books" element={<RequireLibrarian user={user}><ManageBooks /></RequireLibrarian>} />
           <Route path="/borrow-records" element={<RequireLibrarian user={user}><BorrowRecordsPage /></RequireLibrarian>} />
