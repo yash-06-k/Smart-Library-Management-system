@@ -69,9 +69,10 @@ This repo includes `render.yaml` and `frontend/vercel.json` so deployments are r
    - `FIREBASE_CREDENTIALS` (paste the full service account JSON)
    - `OPENAI_API_KEY`
    - Optional: `OPENAI_BASE_URL`, `OPENAI_MODEL`
-6. Public access is enabled by default via `PUBLIC_API=true`.
-   - Set `PUBLIC_API=false` if you want to require Firebase auth.
-   - Set `PUBLIC_API_ROLE=librarian` if you want admin endpoints to be public too.
+6. Public access is enabled by default via `PUBLIC_API=true` for unauthenticated requests.
+   - If a Firebase token is present, the real user role is used.
+   - Set `PUBLIC_API=false` to require Firebase auth for all requests.
+   - Set `PUBLIC_API_ROLE=librarian` to make admin endpoints public too.
 
 ### B. Deploy Frontend to Vercel
 1. In Vercel, create a new Project from the repo.

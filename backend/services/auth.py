@@ -55,7 +55,7 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     x_firebase_uid: str | None = Header(default=None, alias="X-Firebase-UID"),
 ) -> dict:
-    if PUBLIC_API:
+    if PUBLIC_API and not credentials and not x_firebase_uid:
         return _public_user()
 
     firebase_uid, token_email = _resolve_firebase_uid(credentials, x_firebase_uid)
