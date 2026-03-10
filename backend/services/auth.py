@@ -12,6 +12,16 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 PUBLIC_API = os.getenv("PUBLIC_API", "").strip().lower() in {"1", "true", "yes"}
 PUBLIC_API_ROLE = os.getenv("PUBLIC_API_ROLE", "student").strip().lower()
+ADMIN_EMAILS = {
+    item.strip().lower()
+    for item in os.getenv("ADMIN_EMAILS", "").split(",")
+    if item.strip()
+}
+ADMIN_UIDS = {
+    item.strip()
+    for item in os.getenv("ADMIN_UIDS", "").split(",")
+    if item.strip()
+}
 
 
 def _public_user() -> dict:
@@ -23,6 +33,19 @@ def _public_user() -> dict:
         "role": role,
         "firebase_uid": "public-user",
     }
+
+
+def _apply_admin_override(user: dict) -> dict:
+    if not user:
+        return user
+
+    email = (user.get("email") or "").lower()
+    firebase_uid = user.get("firebase_uid") or user.get("_id")
+
+    if email in ADMIN_EMAILS or (firebase_uid and firebase_uid in ADMIN_UIDS):
+        user["role"] = "librarian"
+
+    return user
 
 
 def _find_user_by_firebase_uid(firebase_uid: str):
@@ -66,13 +89,15 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found. Please complete signup first")
 
-    return {
+    user_payload = {
         "_id": str(user["_id"]),
         "name": user.get("name", ""),
         "email": token_email or user.get("email", ""),
         "role": user.get("role", "student"),
         "firebase_uid": firebase_uid,
     }
+
+    return _apply_admin_override(user_payload)
 
 
 def require_role(allowed_roles: list[str]) -> Callable:

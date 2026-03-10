@@ -73,6 +73,7 @@ This repo includes `render.yaml` and `frontend/vercel.json` so deployments are r
    - If a Firebase token is present, the real user role is used.
    - Set `PUBLIC_API=false` to require Firebase auth for all requests.
    - Set `PUBLIC_API_ROLE=librarian` to make admin endpoints public too.
+   - You can override admin access by setting `ADMIN_EMAILS` or `ADMIN_UIDS` (comma-separated).
 
 ### B. Deploy Frontend to Vercel
 1. In Vercel, create a new Project from the repo.

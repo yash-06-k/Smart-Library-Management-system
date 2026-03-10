@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from database import doc_to_dict, get_db, serialize_document
 from models.schemas import BookCreateRequest, BookUpdateRequest, BulkBooksRequest
 from services.auth import get_current_librarian, get_current_student
+from services.covers import build_cover, needs_refresh
 from services.chatbot import get_chat_client, resolve_model
 
 router = APIRouter(tags=["Books"])
@@ -355,4 +356,55 @@ def get_recommendations(current_user: dict = Depends(get_current_student)):
     return {
         "recommendations": recommendations,
         "source": source,
+    }
+
+
+@router.post("/books/refresh-covers")
+def refresh_book_covers(
+    dry_run: bool = Query(default=False),
+    limit: int | None = Query(default=None),
+    current_user: dict = Depends(get_current_librarian),
+):
+    db = get_db()
+    updated = 0
+    skipped = 0
+    sample = []
+
+    docs = list(db.books.stream())
+    if limit:
+        docs = docs[:limit]
+
+    for doc in docs:
+        if not doc.exists:
+            continue
+        book = doc_to_dict(doc) or {}
+        cover = book.get("cover_image")
+        if not needs_refresh(cover):
+            skipped += 1
+            continue
+
+        seed = book.get("isbn") or book.get("_id") or doc.id
+        new_cover = build_cover(seed)
+        if not dry_run:
+            doc.reference.update({
+                "cover_image": new_cover,
+                "updated_at": datetime.utcnow(),
+            })
+
+        updated += 1
+        if len(sample) < 10:
+            sample.append(
+                {
+                    "id": book.get("_id") or doc.id,
+                    "title": book.get("title"),
+                    "old": cover,
+                    "new": new_cover,
+                }
+            )
+
+    return {
+        "updated": updated,
+        "skipped": skipped,
+        "dry_run": dry_run,
+        "sample": sample,
     }
