@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: smart-library-backend
+    env: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PUBLIC_API
+        value: "true"
+      - key: PUBLIC_API_ROLE
+        value: "student"
+      - key: FIREBASE_CREDENTIALS
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        sync: false
+      - key: OPENAI_MODEL
+        sync: false
