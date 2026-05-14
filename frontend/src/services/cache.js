@@ -1,7 +1,7 @@
 /**
  * Simple in-memory cache for API responses with TTL support
  */
-class APICache {
+export class APICache {
   constructor() {
     this.cache = new Map();
     this.timers = new Map();
