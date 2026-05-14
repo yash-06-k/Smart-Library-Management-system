@@ -45,9 +45,9 @@ if cors_origins == ["*"]:
     cors_allow_credentials = False
 
 # Add compression middleware for performance
-from fastapi.middleware.gzip import GZIPMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
-app.add_middleware(GZIPMiddleware, minimum_size=1000)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.add_middleware(
     CORSMiddleware,
