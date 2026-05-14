@@ -62,6 +62,8 @@ def _normalize_isbn(value: str | None) -> str:
 def list_books(
     category: str | None = Query(default=None),
     search: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    skip: int = Query(default=0, ge=0),
     current_user: dict = Depends(get_current_student),
 ):
     db = get_db()
@@ -95,7 +97,10 @@ def list_books(
     books.sort(key=lambda item: (item.get("title") or "").lower())
     borrowed_map, reserved_map = _build_book_status_maps(db)
     enriched = [_attach_status(book, borrowed_map, reserved_map) for book in books]
-    return [serialize_document(book) for book in enriched]
+    
+    # Apply pagination
+    paginated = enriched[skip : skip + limit]
+    return [serialize_document(book) for book in paginated]
 
 
 @router.get("/books/{book_id}")

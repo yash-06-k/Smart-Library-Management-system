@@ -34,10 +34,16 @@ export default function BorrowedBooks() {
     setBusyRecordId(recordId);
     setError('');
     try {
-      await returnBook(recordId);
+      const response = await returnBook(recordId);
+      if (!response.data) {
+        throw new Error('Invalid response from server');
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
       await loadRecords();
     } catch (requestError) {
-      setError(requestError.response?.data?.detail || 'Return failed');
+      const errorMsg = requestError.response?.data?.detail || requestError.message || 'Return failed';
+      setError(errorMsg);
+      console.error('Return error:', errorMsg);
     } finally {
       setBusyRecordId('');
     }
@@ -46,10 +52,16 @@ export default function BorrowedBooks() {
   const handleScanReturn = async (bookId) => {
     setError('');
     try {
-      await returnBookByBookId(bookId);
+      const response = await returnBookByBookId(bookId);
+      if (!response.data) {
+        throw new Error('Invalid response from server');
+      }
+      setScannerOpen(false);
       await loadRecords();
     } catch (requestError) {
-      setError(requestError.response?.data?.detail || 'Return failed');
+      const errorMsg = requestError.response?.data?.detail || requestError.message || 'Return failed';
+      setError(errorMsg);
+      console.error('Return error:', errorMsg);
     }
   };
 

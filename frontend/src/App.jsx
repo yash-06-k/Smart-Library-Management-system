@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   BrowserRouter,
   Navigate,
@@ -25,25 +25,28 @@ import LoadingState from './components/LoadingState';
 import { auth } from './firebase';
 import { loginUser, signupUser } from './services/api';
 
+// Lazy load pages for code splitting
 import Login from './pages/auth/Login';
 import Signup from './pages/auth/Signup';
 import NotFound from './pages/shared/NotFound';
-import BookDetailsPage from './pages/shared/BookDetails';
+const BookDetailsPage = lazy(() => import('./pages/shared/BookDetails'));
 
-import StudentDashboard from './pages/student/Dashboard';
-import BrowseBooks from './pages/student/BrowseBooks';
-import BorrowedBooks from './pages/student/BorrowedBooks';
-import HistoryPage from './pages/student/History';
-import WishlistPage from './pages/student/Wishlist';
-import StudentAIPage from './pages/student/AIChat';
+// Student pages - lazy loaded
+const StudentDashboard = lazy(() => import('./pages/student/Dashboard'));
+const BrowseBooks = lazy(() => import('./pages/student/BrowseBooks'));
+const BorrowedBooks = lazy(() => import('./pages/student/BorrowedBooks'));
+const HistoryPage = lazy(() => import('./pages/student/History'));
+const WishlistPage = lazy(() => import('./pages/student/Wishlist'));
+const StudentAIPage = lazy(() => import('./pages/student/AIChat'));
 
-import LibrarianDashboard from './pages/librarian/Dashboard';
-import ManageBooks from './pages/librarian/ManageBooks';
-import BorrowRecordsPage from './pages/librarian/BorrowRecords';
-import StudentsPage from './pages/librarian/Students';
-import AnalyticsPage from './pages/librarian/Analytics';
-import DatabaseMonitorPage from './pages/librarian/DatabaseMonitor';
-import AdminAIPage from './pages/librarian/AIAssistant';
+// Librarian pages - lazy loaded
+const LibrarianDashboard = lazy(() => import('./pages/librarian/Dashboard'));
+const ManageBooks = lazy(() => import('./pages/librarian/ManageBooks'));
+const BorrowRecordsPage = lazy(() => import('./pages/librarian/BorrowRecords'));
+const StudentsPage = lazy(() => import('./pages/librarian/Students'));
+const AnalyticsPage = lazy(() => import('./pages/librarian/Analytics'));
+const DatabaseMonitorPage = lazy(() => import('./pages/librarian/DatabaseMonitor'));
+const AdminAIPage = lazy(() => import('./pages/librarian/AIAssistant'));
 
 const studentNavigation = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -90,7 +93,9 @@ function ProtectedLayout({ user, onLogout }) {
 
   return (
     <LayoutShell user={user} navItems={navItems} onLogout={onLogout}>
-      <Outlet />
+      <Suspense fallback={<LoadingState label="Loading page..." />}>
+        <Outlet />
+      </Suspense>
     </LayoutShell>
   );
 }
@@ -191,8 +196,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
-        <Route path="/signup" element={user ? <Navigate to="/" replace /> : <Signup />} />
+        <Route path="/login" element={user ? <Navigate to="/" replace /> : <Suspense fallback={<LoadingState label="Loading..." />}><Login /></Suspense>} />
+        <Route path="/signup" element={user ? <Navigate to="/" replace /> : <Suspense fallback={<LoadingState label="Loading..." />}><Signup /></Suspense>} />
 
         <Route
           element={

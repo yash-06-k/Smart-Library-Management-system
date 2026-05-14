@@ -83,8 +83,9 @@ def _borrow_book(payload: BorrowRequest, current_user: dict):
     book = doc_to_dict(book_snapshot)
     book_ref = db.books.document(book["_id"])
 
-    if (book.get("available_copies") or 0) <= 0:
-        raise HTTPException(status_code=400, detail="Book is currently unavailable")
+    available = book.get("available_copies") or 0
+    if available <= 0:
+        raise HTTPException(status_code=400, detail=f"Book is currently unavailable. ({available} copies available)")
 
     book_ref.update(
         {
@@ -129,7 +130,8 @@ def create_manual_borrow_record(payload: BorrowRequest, current_user: dict = Dep
     return _borrow_book(payload, current_user)
 
 
-def _list_borrow_records(current_user: dict, student_id: str | None, status: str | None):
+def _list_borrow_records(current_user: dict, student_id: str | None, status: str | None, limit: int = 100, skip: int = 0):
+    """List borrow records with pagination and status filtering."""
     db = get_db()
 
     query = db.borrow_records
@@ -138,45 +140,61 @@ def _list_borrow_records(current_user: dict, student_id: str | None, status: str
     elif student_id:
         query = query.where("student_id", "==", student_id)
 
-    records = [doc_to_dict(doc) for doc in query.stream() if doc.exists]
-    records.sort(key=lambda record: record.get("borrow_date") or datetime.min, reverse=True)
+    # Apply status filter at query level if requesting specific statuses
+    if status and status != "Overdue":  # Overdue is computed, not stored
+        query = query.where("status", "==", status)
 
+    # Fetch all records (with limit) and sort in memory
+    all_records = [doc_to_dict(doc) for doc in query.limit(limit + skip).stream() if doc.exists]
+    all_records.sort(key=lambda record: record.get("borrow_date") or datetime.min, reverse=True)
+
+    # Update overdue status dynamically
     now = datetime.utcnow()
-    for record in records:
+    for record in all_records:
         if record.get("status") == "Borrowed" and record.get("due_date") and record["due_date"] < now:
             record["status"] = "Overdue"
 
-    if status:
-        records = [record for record in records if record.get("status") == status]
+    # Filter by computed overdue status if needed
+    if status == "Overdue":
+        all_records = [record for record in all_records if record.get("status") == "Overdue"]
+    
+    # Apply skip and limit for pagination
+    paginated_records = all_records[skip : skip + limit]
 
-    return [serialize_document(record) for record in records]
+    return [serialize_document(record) for record in paginated_records]
 
 
 @router.get("/borrow-records")
 def list_borrow_records(
     student_id: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    skip: int = Query(default=0, ge=0),
     current_user: dict = Depends(get_current_student),
 ):
-    return _list_borrow_records(current_user, student_id, status)
+    return _list_borrow_records(current_user, student_id, status, limit, skip)
 
 
 @router.get("/borrow/history")
 def legacy_borrow_history(
     student_id: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    skip: int = Query(default=0, ge=0),
     current_user: dict = Depends(get_current_student),
 ):
-    return _list_borrow_records(current_user, student_id, status)
+    return _list_borrow_records(current_user, student_id, status, limit, skip)
 
 
 @router.get("/admin/borrow-history")
 def legacy_admin_borrow_history(
     student_id: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    skip: int = Query(default=0, ge=0),
     current_user: dict = Depends(get_current_librarian),
 ):
-    return _list_borrow_records(current_user, student_id, status)
+    return _list_borrow_records(current_user, student_id, status, limit, skip)
 
 
 @router.post("/reserve")

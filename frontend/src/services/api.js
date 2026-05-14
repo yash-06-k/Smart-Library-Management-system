@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { auth } from '../firebase';
+import { apiCache, cachedRequest, APICache } from './cache';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
@@ -134,17 +135,29 @@ export const loginUser = (payload) =>
     () => api.post('/login', payload),
   ]);
 
-export const getBooks = (params = {}) =>
-  requestWithFallback([
-    () => api.get('/api/books/', { params }),
-    () => api.get('/books', { params }),
-  ]).then((response) => withResponseData(response, normalizeBooks(response.data)));
+export const getBooks = (params = {}) => {
+  const cacheKey = APICache.generateKey('GET', '/books', params);
+  return cachedRequest(
+    () => requestWithFallback([
+      () => api.get('/api/books/', { params }),
+      () => api.get('/books', { params }),
+    ]).then((response) => withResponseData(response, normalizeBooks(response.data))),
+    cacheKey,
+    10 * 60 * 1000 // 10 minute cache for books
+  );
+};
 
-export const getBookById = (bookId) =>
-  requestWithFallback([
-    () => api.get(`/api/books/${bookId}`),
-    () => api.get(`/books/${bookId}`),
-  ]).then((response) => withResponseData(response, normalizeBook(response.data)));
+export const getBookById = (bookId) => {
+  const cacheKey = APICache.generateKey('GET', `/books/${bookId}`);
+  return cachedRequest(
+    () => requestWithFallback([
+      () => api.get(`/api/books/${bookId}`),
+      () => api.get(`/books/${bookId}`),
+    ]).then((response) => withResponseData(response, normalizeBook(response.data))),
+    cacheKey,
+    10 * 60 * 1000 // 10 minute cache for individual books
+  );
+};
 
 export const createBook = (payload) =>
   requestWithFallback([
@@ -173,15 +186,26 @@ export const bulkCreateBooks = (payload) =>
     created: normalizeBooks(response.data.created || []),
   } : response.data));
 
-export const borrowBook = (payload) =>
-  requestWithFallback([
-    () => api.post('/api/borrow', payload),
-    () => api.post('/borrow', payload),
-    () => api.post(`/api/borrow/request/${payload.book_id}`),
-    () => api.post(`/borrow/request/${payload.book_id}`),
+export const borrowBook = async (payload) => {
+  // Ensure due_date is in proper format (ISO string for API)
+  const processedPayload = {
+    ...payload,
+    due_date: payload.due_date instanceof Date 
+      ? payload.due_date.toISOString() 
+      : payload.due_date,
+  };
+  
+  const response = await requestWithFallback([
+    () => api.post('/api/borrow', processedPayload),
+    () => api.post('/borrow', processedPayload),
   ]);
+  
+  // Invalidate related caches after borrowing
+  apiCache.clear(); // Clear all to ensure fresh data
+  return response;
+};
 
-export const reserveBook = (payload) =>
+export const reserveBook = async (payload) => 
   requestWithFallback([
     () => api.post('/api/reserve', payload),
     () => api.post('/reserve', payload),
@@ -189,14 +213,21 @@ export const reserveBook = (payload) =>
 
 export const getBorrowRecords = async (params = {}) => {
   const { status, ...serverParams } = params || {};
-  const dualPrefix = await requestWithFallback([
-    () => api.get('/api/borrow-records', { params: serverParams }),
-    () => api.get('/borrow-records', { params: serverParams }),
-    () => api.get('/api/admin/borrow-history', { params: serverParams }),
-    () => api.get('/api/borrow/history', { params: serverParams }),
-    () => api.get('/admin/borrow-history', { params: serverParams }),
-    () => api.get('/borrow/history', { params: serverParams }),
-  ]);
+  const cacheKey = APICache.generateKey('GET', '/borrow-records', { status, ...serverParams });
+  
+  const dualPrefix = await cachedRequest(
+    () => requestWithFallback([
+      () => api.get('/api/borrow-records', { params: serverParams }),
+      () => api.get('/borrow-records', { params: serverParams }),
+      () => api.get('/api/admin/borrow-history', { params: serverParams }),
+      () => api.get('/api/borrow/history', { params: serverParams }),
+      () => api.get('/admin/borrow-history', { params: serverParams }),
+      () => api.get('/borrow/history', { params: serverParams }),
+    ]),
+    cacheKey,
+    2 * 60 * 1000 // 2 minute cache for borrow records (shorter due to status changes)
+  );
+  
   let records = normalizeBorrowRecords(dualPrefix.data || []);
   if (status) {
     const now = new Date();
@@ -213,13 +244,18 @@ export const getBorrowRecords = async (params = {}) => {
   return withResponseData(dualPrefix, records);
 };
 
-export const returnBook = (borrowRecordId) =>
-  requestWithFallback([
+export const returnBook = async (borrowRecordId) => {
+  const response = await requestWithFallback([
     () => api.post('/api/return', { borrow_record_id: borrowRecordId }),
     () => api.post('/return', { borrow_record_id: borrowRecordId }),
     () => api.put(`/api/borrow/return/${borrowRecordId}`),
     () => api.put(`/borrow/return/${borrowRecordId}`),
   ]);
+  
+  // Invalidate related caches after returning
+  apiCache.clear();
+  return response;
+};
 
 export const returnBookByBookId = (bookId) =>
   requestWithFallback([

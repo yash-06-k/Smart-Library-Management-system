@@ -44,10 +44,17 @@ if cors_origins == ["*"]:
     # Wildcard with credentials can break CORS headers. Disable credentials for wildcard.
     cors_allow_credentials = False
 
+# Add compression middleware for performance
+from fastapi.middleware.gzip import GZIPMiddleware
+
+app.add_middleware(GZIPMiddleware, minimum_size=1000)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=cors_allow_credentials,
+    allow_methods=["*"],
+    allow_headers=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

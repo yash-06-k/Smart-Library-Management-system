@@ -86,14 +86,23 @@ export default function BrowseBooks() {
     dueDate.setDate(dueDate.getDate() + 7);
 
     try {
-      await borrowBook({
+      const response = await borrowBook({
         book_id: bookId,
-        due_date: dueDate.toISOString(),
+        due_date: dueDate,
       });
+      
+      // Verify borrow was successful
+      if (!response.data) {
+        throw new Error('Invalid response from server');
+      }
 
+      // Show success and refresh
+      await new Promise(resolve => setTimeout(resolve, 500));
       await loadBooks(search, category);
     } catch (requestError) {
-      setError(requestError.response?.data?.detail || 'Borrow request failed');
+      const errorMsg = requestError.response?.data?.detail || requestError.message || 'Borrow request failed';
+      setError(errorMsg);
+      console.error('Borrow error:', errorMsg);
     } finally {
       setBusyBookId('');
     }
@@ -128,13 +137,22 @@ export default function BrowseBooks() {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 7);
       try {
-        await borrowBook({
+        const response = await borrowBook({
           book_id: value,
-          due_date: dueDate.toISOString(),
+          due_date: dueDate,
         });
+        
+        if (!response.data) {
+          throw new Error('Invalid response from server');
+        }
+        
+        setScannerOpen(false);
+        await new Promise(resolve => setTimeout(resolve, 500));
         await loadBooks(search, category);
       } catch (requestError) {
-        setError(requestError.response?.data?.detail || 'Borrow request failed');
+        const errorMsg = requestError.response?.data?.detail || requestError.message || 'Borrow request failed';
+        setError(errorMsg);
+        console.error('Scan borrow error:', errorMsg);
       }
     }
   };
