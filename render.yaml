@@ -10,7 +10,7 @@ services:
     autoDeploy: true
     envVars:
       - key: CORS_ORIGINS
-        value: "https://smart-library-management-system-fpa.vercel.app,http://localhost:3000,http://localhost:5173"
+        value: "https://smart-library-management-system-fpa.vercel.app,https://smart-library-management-system-beta.vercel.app,https://*.vercel.app,http://localhost:3000,http://localhost:5173"
       - key: CORS_ALLOW_CREDENTIALS
         value: "false"
       - key: PUBLIC_API

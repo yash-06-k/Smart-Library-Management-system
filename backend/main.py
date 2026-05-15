@@ -49,6 +49,8 @@ def _parse_cors_origins() -> list[str]:
             "http://localhost:5174",
             "http://127.0.0.1:5174",
             "https://smart-library-management-system-fpa.vercel.app",
+            "https://smart-library-management-system-beta.vercel.app",
+            "https://*.vercel.app",
         ]
     parsed = [_normalize_origin(item) for item in raw.split(",") if item.strip()]
     if "*" in parsed:
