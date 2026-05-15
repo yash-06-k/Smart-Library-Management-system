@@ -9,7 +9,7 @@ from firebase_admin import auth as firebase_auth
 from firebase_admin import credentials, firestore
 
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
 FIREBASE_CREDENTIALS = os.getenv("FIREBASE_CREDENTIALS", "").strip()
 FIREBASE_READY = False

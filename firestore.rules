@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Function to get the user's data from the users collection
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Function to check if the user has a specific role
+    function hasRole(role) {
+      return isAuthenticated() && getUserData().role == role;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || hasRole('librarian'));
+      allow write: if isAuthenticated() && (request.auth.uid == userId || hasRole('librarian'));
+    }
+
+    // Books Collection
+    match /books/{bookId} {
+      allow read: if isAuthenticated();
+      allow write: if hasRole('librarian');
+    }
+
+    // Borrow Records Collection
+    match /borrow_records/{recordId} {
+      allow read: if isAuthenticated() && (request.resource.data.student_id == request.auth.uid || hasRole('librarian'));
+      allow write: if hasRole('librarian') || (isAuthenticated() && request.resource.data.student_id == request.auth.uid);
+    }
+
+    // Categories (Static Data)
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated();
+      allow write: if hasRole('librarian');
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
+      allow write: if hasRole('librarian');
+    }
+  }
+}

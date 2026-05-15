@@ -32,22 +32,40 @@ app = FastAPI(
 )
 
 def _parse_cors_origins() -> list[str]:
+    def _normalize_origin(value: str) -> str:
+        normalized = value.strip().strip('"').strip("'")
+        if normalized != "*" and normalized.endswith("/"):
+            normalized = normalized[:-1]
+        return normalized
+
     raw = os.getenv("CORS_ORIGINS", "").strip()
     if not raw:
         # Default: allow common development and production origins
         return [
             "http://localhost:3000",
+            "http://127.0.0.1:3000",
             "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
             "https://smart-library-management-system-fpa.vercel.app",
         ]
-    return [item.strip() for item in raw.split(",") if item.strip()]
+    parsed = [_normalize_origin(item) for item in raw.split(",") if item.strip()]
+    if "*" in parsed:
+        return ["*"]
+    return parsed
 
 
 cors_origins = _parse_cors_origins()
+cors_origin_regex = os.getenv(
+    "CORS_ORIGIN_REGEX",
+    r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+).strip()
 cors_allow_credentials = os.getenv("CORS_ALLOW_CREDENTIALS", "true").strip().lower() in {"1", "true", "yes"}
 if cors_origins == ["*"]:
     # Wildcard with credentials can break CORS headers. Disable credentials for wildcard.
     cors_allow_credentials = False
+    cors_origin_regex = ""
 
 # Add compression middleware for performance
 from fastapi.middleware.gzip import GZipMiddleware
@@ -57,6 +75,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex or None,
     allow_credentials=cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
