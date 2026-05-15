@@ -202,15 +202,15 @@ export default function LibrarianDashboard() {
 
       <section className="glass-card rounded-2xl p-5 mt-6">
         <h3 className="text-lg font-semibold text-white mb-4">Recent Borrow Activity</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto -mx-5 px-5 md:mx-0 md:px-0">
+          <table className="responsive-table">
             <thead className="text-slate-400">
               <tr>
-                <th className="text-left py-2">Student</th>
-                <th className="text-left py-2">Book</th>
-                <th className="text-left py-2">Borrow Date</th>
-                <th className="text-left py-2">Due Date</th>
-                <th className="text-left py-2">Status</th>
+                <th data-label="Student">Student</th>
+                <th data-label="Book">Book</th>
+                <th data-label="Borrow Date">Borrow Date</th>
+                <th data-label="Due Date">Due Date</th>
+                <th data-label="Status">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -220,12 +220,12 @@ export default function LibrarianDashboard() {
                 </tr>
               ) : (
                 latestRecords.map((record) => (
-                  <tr key={record._id} className="border-t border-white/10">
-                    <td className="py-3 text-white">{record.student_name}</td>
-                    <td className="py-3 text-slate-300">{record.book_title}</td>
-                    <td className="py-3 text-slate-300">{new Date(record.borrow_date).toLocaleDateString()}</td>
-                    <td className="py-3 text-slate-300">{new Date(record.due_date).toLocaleDateString()}</td>
-                    <td className="py-3 text-slate-300">{record.status}</td>
+                  <tr key={record._id}>
+                    <td data-label="Student" className="font-medium text-white">{record.student_name}</td>
+                    <td data-label="Book">{record.book_title}</td>
+                    <td data-label="Borrow Date">{new Date(record.borrow_date).toLocaleDateString()}</td>
+                    <td data-label="Due Date">{new Date(record.due_date).toLocaleDateString()}</td>
+                    <td data-label="Status">{record.status}</td>
                   </tr>
                 ))
               )}

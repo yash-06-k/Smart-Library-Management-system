@@ -18,17 +18,17 @@ export default function StatCard({ title, value, icon: Icon, tone = 'indigo', de
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.35 }}
       whileHover={{ y: -4 }}
-      className="glass-card p-5 rounded-2xl"
+      className="glass-card p-4 sm:p-5 rounded-2xl min-h-[120px] sm:min-h-[140px]"
     >
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs tracking-wide uppercase text-slate-400">{title}</p>
-          <p className="text-3xl font-semibold mt-2 text-white">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs tracking-wide uppercase text-slate-400 truncate">{title}</p>
+          <p className="text-2xl sm:text-3xl font-semibold mt-2 text-white">
             <AnimatedCounter value={value} />
           </p>
         </div>
-        <div className={`w-12 h-12 rounded-xl border bg-gradient-to-br ${toneClasses} flex items-center justify-center`}>
-          <Icon size={22} />
+        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl border bg-gradient-to-br ${toneClasses} flex items-center justify-center flex-shrink-0`}>
+          <Icon size={20} className="sm:block" />
         </div>
       </div>
     </motion.div>

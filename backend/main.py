@@ -34,7 +34,12 @@ app = FastAPI(
 def _parse_cors_origins() -> list[str]:
     raw = os.getenv("CORS_ORIGINS", "").strip()
     if not raw:
-        return ["*"]
+        # Default: allow common development and production origins
+        return [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "https://smart-library-management-system-fpa.vercel.app",
+        ]
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 

@@ -177,7 +177,7 @@ export default function ManageBooks() {
       {error ? <p className="text-rose-300 text-sm mb-4">{error}</p> : null}
 
       <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-5">
-        <form onSubmit={handleSubmit} className="glass-card rounded-2xl p-4 space-y-3 h-fit">
+        <form onSubmit={handleSubmit} className="glass-card rounded-2xl p-4 space-y-3 h-fit sticky top-4 lg:top-6">
           <h3 className="text-white text-lg font-medium flex items-center gap-2">
             <Plus size={16} />
             {editingId ? 'Edit Book' : 'Add Book'}
@@ -191,7 +191,7 @@ export default function ManageBooks() {
             <button
               type="button"
               onClick={() => setScannerOpen(true)}
-              className="px-3 rounded-xl border border-white/20 text-xs hover:bg-white/10"
+              className="px-3 rounded-xl border border-white/20 text-xs hover:bg-white/10 min-h-[44px] flex-shrink-0"
             >
               Scan ISBN
             </button>
@@ -223,11 +223,11 @@ export default function ManageBooks() {
           <textarea className="field min-h-[90px]" placeholder="Description" value={formState.description} onChange={(event) => setFormState((prev) => ({ ...prev, description: event.target.value }))} />
 
           <div className="flex gap-2">
-            <button type="submit" disabled={submitting} className="flex-1 rounded-xl bg-indigo-500/20 border border-indigo-300/30 py-2 text-sm hover:bg-indigo-500/30 disabled:opacity-50">
+            <button type="submit" disabled={submitting} className="flex-1 rounded-xl bg-indigo-500/20 border border-indigo-300/30 py-2 text-sm hover:bg-indigo-500/30 disabled:opacity-50 min-h-[44px]">
               {submitting ? 'Saving...' : editingId ? 'Update Book' : 'Add Book'}
             </button>
             {editingId ? (
-              <button type="button" className="px-4 rounded-xl border border-white/20 text-sm" onClick={resetForm}>
+              <button type="button" className="px-4 rounded-xl border border-white/20 text-sm min-h-[44px]" onClick={resetForm}>
                 Cancel
               </button>
             ) : null}
@@ -235,7 +235,7 @@ export default function ManageBooks() {
         </form>
 
         <div className="glass-card rounded-2xl p-4 overflow-auto space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -244,16 +244,16 @@ export default function ManageBooks() {
             />
             <button
               onClick={() => setQrScannerOpen(true)}
-              className="rounded-xl bg-indigo-500/20 border border-indigo-300/30 px-4 py-2 text-sm hover:bg-indigo-500/30"
+              className="rounded-xl bg-indigo-500/20 border border-indigo-300/30 px-4 py-2 text-sm hover:bg-indigo-500/30 min-h-[44px] flex-shrink-0"
             >
               Scan QR
             </button>
             {scannedBook ? (
               <button
                 onClick={() => navigate(`/books/${resolveBookId(scannedBook)}`)}
-                className="rounded-xl bg-cyan-500/20 border border-cyan-300/30 px-4 py-2 text-sm hover:bg-cyan-500/30"
+                className="rounded-xl bg-cyan-500/20 border border-cyan-300/30 px-4 py-2 text-sm hover:bg-cyan-500/30 min-h-[44px] flex-shrink-0"
               >
-                View Scanned Book
+                View
               </button>
             ) : null}
           </div>
@@ -269,54 +269,55 @@ export default function ManageBooks() {
             </div>
           ) : null}
 
-          <table className="w-full text-sm">
-            <thead className="text-slate-400">
-              <tr>
-                <th className="text-left py-2">Cover</th>
-                <th className="text-left py-2">Title</th>
-                <th className="text-left py-2">Author</th>
-                <th className="text-left py-2">Category</th>
-                <th className="text-left py-2">Rack</th>
-                <th className="text-left py-2">Status</th>
-                <th className="text-left py-2">Availability</th>
-                <th className="text-left py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredBooks.map((book) => (
-                <tr key={resolveBookId(book)} className="border-t border-white/10">
-                  <td className="py-3">
-                    <BookCover
-                      src={book.cover_image}
-                      title={book.title}
-                      author={book.author}
-                      className="w-10 h-14 rounded-lg"
-                    />
-                  </td>
-                  <td className="py-3 text-white">{book.title}</td>
-                  <td className="py-3 text-slate-300">{book.author}</td>
-                  <td className="py-3 text-slate-300">{book.category}</td>
-                  <td className="py-3 text-slate-300">{book.rack_location || '-'}</td>
-                  <td className="py-3 text-slate-300">{book.availability_status || 'Available'}</td>
-                  <td className="py-3 text-slate-300">{book.available_copies}/{book.total_copies}</td>
-                  <td className="py-3">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => startEdit(book)} className="p-2 rounded-lg bg-slate-900/70 border border-white/10 hover:bg-slate-800">
-                        <Pencil size={14} />
-                      </button>
-                      <button onClick={() => handleShowQr(book)} className="p-2 rounded-lg bg-cyan-500/20 border border-cyan-300/20 hover:bg-cyan-500/30">
-                        QR
-                      </button>
-                      <button onClick={() => handleDelete(resolveBookId(book))} className="p-2 rounded-lg bg-rose-500/20 border border-rose-300/20 hover:bg-rose-500/30">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+            <table className="responsive-table">
+              <thead className="text-slate-400">
+                <tr>
+                  <th data-label="Cover">Cover</th>
+                  <th data-label="Title">Title</th>
+                  <th data-label="Author">Author</th>
+                  <th data-label="Category">Category</th>
+                  <th data-label="Rack">Rack</th>
+                  <th data-label="Status">Status</th>
+                  <th data-label="Available">Available</th>
+                  <th data-label="Actions">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filteredBooks.map((book) => (
+                  <tr key={resolveBookId(book)}>
+                    <td data-label="Cover">
+                      <BookCover
+                        src={book.cover_image}
+                        title={book.title}
+                        author={book.author}
+                        className="w-10 h-14 rounded-lg"
+                      />
+                    </td>
+                    <td data-label="Title" className="font-medium text-white">{book.title}</td>
+                    <td data-label="Author">{book.author}</td>
+                    <td data-label="Category">{book.category}</td>
+                    <td data-label="Rack">{book.rack_location || '-'}</td>
+                    <td data-label="Status">{book.availability_status || 'Available'}</td>
+                    <td data-label="Available">{book.available_copies}/{book.total_copies}</td>
+                    <td data-label="Actions">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => startEdit(book)} className="p-2 rounded-lg bg-slate-900/70 border border-white/10 hover:bg-slate-800 min-h-[44px] min-w-[44px] flex items-center justify-center" title="Edit">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => handleShowQr(book)} className="p-2 rounded-lg bg-cyan-500/20 border border-cyan-300/20 hover:bg-cyan-500/30 min-h-[44px] min-w-[44px] flex items-center justify-center text-xs font-medium" title="Show QR">
+                          QR
+                        </button>
+                        <button onClick={() => handleDelete(resolveBookId(book))} className="p-2 rounded-lg bg-rose-500/20 border border-rose-300/20 hover:bg-rose-500/30 min-h-[44px] min-w-[44px] flex items-center justify-center" title="Delete">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
       </div>
 
       <ScannerModal

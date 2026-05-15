@@ -244,25 +244,25 @@ export default function BorrowRecordsPage() {
         <button
           type="button"
           onClick={() => openScanner('issue')}
-          className="rounded-xl bg-cyan-500/20 border border-cyan-300/30 px-4 py-2 text-sm hover:bg-cyan-500/30"
+          className="rounded-xl bg-cyan-500/20 border border-cyan-300/30 px-4 py-2 text-sm hover:bg-cyan-500/30 min-h-[44px]"
         >
           Scan QR to Issue
         </button>
         <button
           type="button"
           onClick={() => openScanner('return')}
-          className="rounded-xl bg-emerald-500/20 border border-emerald-300/30 px-4 py-2 text-sm hover:bg-emerald-500/30"
+          className="rounded-xl bg-emerald-500/20 border border-emerald-300/30 px-4 py-2 text-sm hover:bg-emerald-500/30 min-h-[44px]"
         >
           Scan QR to Return
         </button>
       </div>
 
-      <form onSubmit={submitManualRecord} className="glass-card rounded-2xl p-4 mb-5 grid grid-cols-1 md:grid-cols-[1fr_1fr_220px_auto] gap-3">
+      <form onSubmit={submitManualRecord} className="glass-card rounded-2xl p-4 mb-5 space-y-3 md:space-y-0 md:grid md:grid-cols-[1fr_1fr_auto] lg:grid-cols-[1fr_1fr_220px_auto] gap-3">
         {hasStudents ? (
           <select
             value={manualForm.student_id}
             onChange={(event) => setManualForm((prev) => ({ ...prev, student_id: event.target.value }))}
-            className="field"
+            className="field md:col-span-full lg:col-span-1"
             required
           >
             <option value="">Select Student</option>
@@ -275,7 +275,7 @@ export default function BorrowRecordsPage() {
             type="text"
             value={manualForm.student_id}
             onChange={(event) => setManualForm((prev) => ({ ...prev, student_id: event.target.value }))}
-            className="field"
+            className="field md:col-span-full lg:col-span-1"
             placeholder="Enter student email or UID"
             required
           />
@@ -284,7 +284,7 @@ export default function BorrowRecordsPage() {
         <select
           value={manualForm.book_id}
           onChange={(event) => setManualForm((prev) => ({ ...prev, book_id: event.target.value }))}
-          className="field"
+          className="field md:col-span-full lg:col-span-1"
           required
         >
           <option value="">Select Book</option>
@@ -297,25 +297,25 @@ export default function BorrowRecordsPage() {
           type="date"
           value={manualForm.due_date}
           onChange={(event) => setManualForm((prev) => ({ ...prev, due_date: event.target.value }))}
-          className="field"
+          className="field md:col-span-full lg:col-span-1"
         />
 
-        <button className="rounded-xl bg-indigo-500/20 border border-indigo-300/30 px-4 py-2 text-sm hover:bg-indigo-500/30">
+        <button className="rounded-xl bg-indigo-500/20 border border-indigo-300/30 px-4 py-2 text-sm hover:bg-indigo-500/30 md:col-span-full lg:col-span-1 min-h-[44px]">
           Add Borrow Record
         </button>
       </form>
 
-      <div className="glass-card rounded-2xl overflow-auto">
-        <table className="w-full text-sm">
+      <div className="glass-card rounded-2xl overflow-auto -mx-4 px-4 md:mx-0 md:px-0">
+        <table className="responsive-table">
           <thead className="bg-slate-900/70 text-slate-300">
             <tr>
-              <th className="text-left px-4 py-3">Student Name</th>
-              <th className="text-left px-4 py-3">Book Title</th>
-              <th className="text-left px-4 py-3">Category</th>
-              <th className="text-left px-4 py-3">Borrow Date</th>
-              <th className="text-left px-4 py-3">Return Date</th>
-              <th className="text-left px-4 py-3">Status</th>
-              <th className="text-left px-4 py-3">Actions</th>
+              <th data-label="Student Name">Student Name</th>
+              <th data-label="Book Title">Book Title</th>
+              <th data-label="Category">Category</th>
+              <th data-label="Borrow Date">Borrow Date</th>
+              <th data-label="Return Date">Return Date</th>
+              <th data-label="Status">Status</th>
+              <th data-label="Actions">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -323,33 +323,33 @@ export default function BorrowRecordsPage() {
               const pending = busyRecordId === record._id;
 
               return (
-                <tr key={record._id} className="border-t border-white/10">
-                  <td className="px-4 py-3 text-white">{record.student_name}</td>
-                  <td className="px-4 py-3 text-slate-300">{record.book_title}</td>
-                  <td className="px-4 py-3 text-slate-300">{record.category}</td>
-                  <td className="px-4 py-3 text-slate-300">{new Date(record.borrow_date).toLocaleDateString()}</td>
-                  <td className="px-4 py-3 text-slate-300">{record.return_date ? new Date(record.return_date).toLocaleDateString() : '-'}</td>
-                  <td className="px-4 py-3 text-slate-300">{record.status}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
+                <tr key={record._id}>
+                  <td data-label="Student Name" className="font-medium text-white">{record.student_name}</td>
+                  <td data-label="Book Title">{record.book_title}</td>
+                  <td data-label="Category">{record.category}</td>
+                  <td data-label="Borrow Date">{new Date(record.borrow_date).toLocaleDateString()}</td>
+                  <td data-label="Return Date">{record.return_date ? new Date(record.return_date).toLocaleDateString() : '-'}</td>
+                  <td data-label="Status">{record.status}</td>
+                  <td data-label="Actions">
+                    <div className="flex gap-2 flex-wrap">
                       <button
                         onClick={() => markReturned(record._id)}
                         disabled={pending || record.status === 'Returned'}
-                        className="px-2 py-1 rounded-lg text-xs bg-emerald-500/20 border border-emerald-300/30 hover:bg-emerald-500/30 disabled:opacity-40"
+                        className="px-2 py-1 rounded-lg text-xs bg-emerald-500/20 border border-emerald-300/30 hover:bg-emerald-500/30 disabled:opacity-40 min-h-[36px]"
                       >
                         Mark Returned
                       </button>
                       <button
                         onClick={() => extendDue(record._id, record.due_date)}
                         disabled={pending || record.status === 'Returned'}
-                        className="px-2 py-1 rounded-lg text-xs bg-amber-500/20 border border-amber-300/30 hover:bg-amber-500/30 disabled:opacity-40"
+                        className="px-2 py-1 rounded-lg text-xs bg-amber-500/20 border border-amber-300/30 hover:bg-amber-500/30 disabled:opacity-40 min-h-[36px]"
                       >
                         Extend 7d
                       </button>
                       <button
                         onClick={() => removeRecord(record._id)}
                         disabled={pending}
-                        className="px-2 py-1 rounded-lg text-xs bg-rose-500/20 border border-rose-300/30 hover:bg-rose-500/30 disabled:opacity-40"
+                        className="px-2 py-1 rounded-lg text-xs bg-rose-500/20 border border-rose-300/30 hover:bg-rose-500/30 disabled:opacity-40 min-h-[36px]"
                       >
                         Delete
                       </button>

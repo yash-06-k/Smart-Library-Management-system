@@ -50,6 +50,36 @@
   }
 
   .field {
-    @apply w-full rounded-xl border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-300/40;
+    @apply w-full rounded-xl border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-300/40 min-h-[44px];
+  }
+
+  /* Mobile-first responsive table */
+  .responsive-table {
+    @apply w-full text-sm;
+  }
+
+  .responsive-table thead {
+    @apply hidden md:table-header-group text-slate-400;
+  }
+
+  .responsive-table tbody tr {
+    @apply block md:table-row border-b md:border-b border-white/10 mb-4 md:mb-0 rounded-lg md:rounded-none bg-slate-900/30 md:bg-transparent;
+  }
+
+  .responsive-table td {
+    @apply block md:table-cell py-2 md:py-3 before:content-[attr(data-label)] before:font-bold before:text-slate-300 before:mr-2 md:before:hidden px-2 md:px-0;
+  }
+
+  .responsive-table th {
+    @apply text-left py-2;
+  }
+
+  /* Mobile-friendly button group */
+  .button-group {
+    @apply flex flex-wrap gap-2 md:flex-nowrap;
+  }
+
+  .button-group button {
+    @apply flex-1 md:flex-none;
   }
 }

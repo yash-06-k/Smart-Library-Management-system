@@ -163,8 +163,8 @@ export default function BrowseBooks() {
     <div>
       <PageHeader title="Browse Books" subtitle="Search by title, author, category, or ISBN and borrow instantly." />
 
-      <form onSubmit={handleSearch} className="glass-card rounded-2xl p-4 mb-5 grid grid-cols-1 md:grid-cols-[1fr_220px_auto_auto_auto] gap-3">
-        <div className="relative">
+      <form onSubmit={handleSearch} className="glass-card rounded-2xl p-4 mb-5 space-y-3 md:space-y-0 md:grid md:grid-cols-[1fr_160px_auto] lg:grid-cols-[1fr_220px_auto_auto_auto] gap-3">
+        <div className="relative md:col-span-full lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
             value={search}
@@ -185,55 +185,56 @@ export default function BrowseBooks() {
           ))}
         </select>
 
-        <button className="rounded-xl bg-cyan-500/20 border border-cyan-300/30 hover:bg-cyan-500/30 px-4 py-2 text-sm">
-          Apply
-        </button>
+        <div className="flex gap-2 md:col-span-full lg:col-span-auto flex-wrap lg:flex-nowrap">
+          <button className="flex-1 md:flex-none rounded-xl bg-cyan-500/20 border border-cyan-300/30 hover:bg-cyan-500/30 px-4 py-2 text-sm">
+            Apply
+          </button>
 
-        <button
-          type="button"
-          onClick={() => openScanner('view')}
-          className="rounded-xl bg-indigo-500/20 border border-indigo-300/30 hover:bg-indigo-500/30 px-4 py-2 text-sm"
-        >
-          Scan QR
-        </button>
+          <button
+            type="button"
+            onClick={() => openScanner('view')}
+            className="flex-1 md:flex-none rounded-xl bg-indigo-500/20 border border-indigo-300/30 hover:bg-indigo-500/30 px-4 py-2 text-sm"
+          >
+            Scan QR
+          </button>
 
-        <button
-          type="button"
-          onClick={() => openScanner('borrow')}
-          className="rounded-xl bg-emerald-500/20 border border-emerald-300/30 hover:bg-emerald-500/30 px-4 py-2 text-sm"
-        >
-          Scan & Borrow
-        </button>
+          <button
+            type="button"
+            onClick={() => openScanner('borrow')}
+            className="flex-1 md:flex-none rounded-xl bg-emerald-500/20 border border-emerald-300/30 hover:bg-emerald-500/30 px-4 py-2 text-sm"
+          >
+            Scan & Borrow
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setAvailableOnly((prev) => !prev)}
-          className={`rounded-xl px-4 py-2 text-sm border ${
-            availableOnly
-              ? 'bg-emerald-500/20 border-emerald-300/30 text-emerald-100'
-              : 'bg-slate-900/70 border-white/10 text-slate-300'
-          }`}
-        >
-          {availableOnly ? 'Showing Available' : 'All Books'}
-        </button>
-      </form>
+          <button
+            type="button"
+            onClick={() => setAvailableOnly((prev) => !prev)}
+            className={`flex-1 md:flex-none rounded-xl px-4 py-2 text-sm border ${
+              availableOnly
+                ? 'bg-emerald-500/20 border-emerald-300/30 text-emerald-100'
+                : 'bg-slate-900/70 border-white/10 text-slate-300'
+            }`}
+          >
+            {availableOnly ? 'Showing Available' : 'All Books'}
+          </button>
+        </div>
 
       {error ? <p className="text-rose-300 text-sm mb-4">{error}</p> : null}
 
       {recommendations.length > 0 ? (
-        <section className="glass-card rounded-2xl p-5 mb-6 space-y-4">
+        <section className="glass-card rounded-2xl p-4 sm:p-5 mb-6 space-y-4">
           <div className="flex flex-wrap items-center gap-2 justify-between">
             <h3 className="text-lg font-semibold text-white">Smart Suggestions</h3>
             <span className="text-xs rounded-full px-3 py-1 border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
               {recommendationSource === 'ai' ? 'AI-assisted' : 'Smart picks'}
             </span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {recommendations.map((item) => (
               <button
                 key={item.book._id}
                 onClick={() => navigate(`/books/${item.book._id}`)}
-                className="text-left rounded-2xl border border-white/10 bg-slate-900/60 hover:bg-slate-900/80 p-4 flex gap-3"
+                className="text-left rounded-2xl border border-white/10 bg-slate-900/60 hover:bg-slate-900/80 p-4 flex gap-3 min-h-[100px]"
               >
                 <BookCover
                   src={item.book.cover_image}
@@ -241,10 +242,10 @@ export default function BrowseBooks() {
                   author={item.book.author}
                   className="w-16 h-20 flex-shrink-0"
                 />
-                <div className="space-y-1">
-                  <p className="text-white font-medium">{item.book.title}</p>
-                  <p className="text-xs text-slate-400">{item.book.author}</p>
-                  <p className="text-xs text-cyan-200">{item.reason}</p>
+                <div className="space-y-1 min-w-0">
+                  <p className="text-white font-medium line-clamp-2">{item.book.title}</p>
+                  <p className="text-xs text-slate-400 truncate">{item.book.author}</p>
+                  <p className="text-xs text-cyan-200 line-clamp-2">{item.reason}</p>
                 </div>
               </button>
             ))}
@@ -255,7 +256,7 @@ export default function BrowseBooks() {
       {loading ? (
         <LoadingState label="Loading books..." />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {visibleBooks.length === 0 ? (
             <div className="glass-card rounded-2xl p-6 text-sm text-slate-400">
               No books match this filter.
@@ -271,33 +272,33 @@ export default function BrowseBooks() {
                 : 'bg-rose-500/20 border-rose-300/30 text-rose-200';
 
             return (
-              <article key={book._id} className="glass-card rounded-2xl p-4 flex flex-col gap-3">
+              <article key={book._id} className="glass-card rounded-2xl p-4 flex flex-col gap-3 min-h-[320px]">
                 <div className="flex gap-3">
                   <BookCover
                     src={book.cover_image}
                     title={book.title}
                     author={book.author}
-                    className="w-16 h-20 flex-shrink-0"
+                    className="w-16 h-20 flex-shrink-0 rounded"
                   />
-                  <div>
-                  <p className="text-xs text-cyan-300 uppercase tracking-wide">{book.category}</p>
-                  <h3 className="text-lg font-semibold text-white">{book.title}</h3>
-                  <p className="text-sm text-slate-400">{book.author}</p>
+                  <div className="min-w-0 flex-1">
+                  <p className="text-xs text-cyan-300 uppercase tracking-wide truncate">{book.category}</p>
+                  <h3 className="text-base sm:text-lg font-semibold text-white line-clamp-2">{book.title}</h3>
+                  <p className="text-sm text-slate-400 truncate">{book.author}</p>
                   </div>
                 </div>
 
-                <p className="text-sm text-slate-300 flex-1">{book.description || 'No description available.'}</p>
+                <p className="text-sm text-slate-300 flex-1 line-clamp-3">{book.description || 'No description available.'}</p>
 
                 <div className="text-xs text-slate-400 space-y-1">
-                  <p>ISBN: {book.isbn}</p>
-                  <p>Rack: {book.rack_location || 'Not set'}</p>
-                  <p>Copies: {book.available_copies} available / {book.total_copies} total</p>
+                  <p className="truncate">ISBN: {book.isbn}</p>
+                  <p className="truncate">Rack: {book.rack_location || 'Not set'}</p>
+                  <p>Copies: {book.available_copies}/{book.total_copies}</p>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full border ${statusTone}`}>
                     {status}
                   </span>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 button-group mt-auto">
                   <button
                     onClick={() => handleBorrow(book._id)}
                     disabled={unavailable || pending}
