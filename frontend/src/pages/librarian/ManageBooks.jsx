@@ -318,6 +318,7 @@ export default function ManageBooks() {
               </tbody>
             </table>
           </div>
+        </div>
       </div>
 
       <ScannerModal

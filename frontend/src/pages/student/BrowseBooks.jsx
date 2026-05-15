@@ -218,6 +218,7 @@ export default function BrowseBooks() {
             {availableOnly ? 'Showing Available' : 'All Books'}
           </button>
         </div>
+      </form>
 
       {error ? <p className="text-rose-300 text-sm mb-4">{error}</p> : null}
 
