@@ -6,11 +6,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 export default function LayoutShell({ user, navItems, onLogout, children }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const [darkMode, setDarkMode] = useState(true);
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem('app-theme') !== 'light';
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
+    localStorage.setItem('app-theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
   useEffect(() => {

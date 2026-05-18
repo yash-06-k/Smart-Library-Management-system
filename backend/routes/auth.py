@@ -62,21 +62,6 @@ def login(payload: LoginRequest):
         if matches:
             user = doc_to_dict(matches[0])
 
-    if not user and payload.firebase_uid and payload.email:
-        fallback_name = payload.email.split("@")[0].replace(".", " ").title() or "Student"
-        user_document = {
-            "name": fallback_name,
-            "email": payload.email.strip().lower(),
-            "role": "student",
-            "firebase_uid": payload.firebase_uid.strip(),
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-        }
-        user_ref = db.users.document(user_document["firebase_uid"])
-        user_ref.set(user_document)
-        created = doc_to_dict(user_ref.get())
-        return serialize_document(created)
-
     if not user:
         raise HTTPException(status_code=404, detail="User not found. Please signup first")
 
