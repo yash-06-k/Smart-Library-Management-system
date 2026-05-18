@@ -58,6 +58,29 @@ def _normalize_isbn(value: str | None) -> str:
     return "".join([ch for ch in value if ch.isdigit() or ch in "Xx"]).upper()
 
 
+def _resolve_duplicate_isbn_doc(db, normalized_isbn: str, exclude_book_id: str | None = None):
+    if not normalized_isbn:
+        return None
+
+    normalized_matches = list(db.books.where("isbn_normalized", "==", normalized_isbn).limit(5).stream())
+    for match in normalized_matches:
+        if exclude_book_id and match.id == exclude_book_id:
+            continue
+        return match
+
+    for doc in db.books.stream():
+        if not doc.exists:
+            continue
+        book = doc_to_dict(doc) or {}
+        if _normalize_isbn(book.get("isbn")) != normalized_isbn:
+            continue
+        if exclude_book_id and doc.id == exclude_book_id:
+            continue
+        return doc
+
+    return None
+
+
 @router.get("/books")
 def list_books(
     category: str | None = Query(default=None),
@@ -131,22 +154,31 @@ def create_book(payload: BookCreateRequest, current_user: dict = Depends(get_cur
     if available_copies > payload.total_copies:
         raise HTTPException(status_code=400, detail="available_copies cannot exceed total_copies")
 
+    isbn_value = (payload.isbn or "").strip()
+    normalized_isbn = _normalize_isbn(isbn_value)
+    if not normalized_isbn:
+        raise HTTPException(status_code=400, detail="ISBN is required")
+
     book_doc = {
         "title": payload.title.strip(),
         "author": payload.author.strip(),
         "category": payload.category.strip(),
-        "isbn": payload.isbn.strip(),
+        "isbn": normalized_isbn,
+        "isbn_normalized": normalized_isbn,
         "description": payload.description.strip(),
         "rack_location": payload.rack_location.strip() if payload.rack_location else None,
         "total_copies": payload.total_copies,
         "available_copies": available_copies,
         "cover_image": payload.cover_image,
+        "source": "manual",
+        "created_by": current_user.get("_id"),
+        "created_by_role": current_user.get("role"),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
     }
 
-    isbn_matches = list(db.books.where("isbn", "==", book_doc["isbn"]).limit(1).stream())
-    if isbn_matches:
+    duplicate = _resolve_duplicate_isbn_doc(db, normalized_isbn)
+    if duplicate:
         raise HTTPException(status_code=400, detail="Book with this ISBN already exists")
 
     book_ref = db.books.document()
@@ -164,7 +196,7 @@ def bulk_create_books(payload: BulkBooksRequest, current_user: dict = Depends(ge
     seen_isbns: set[str] = set()
 
     for index, item in enumerate(payload.books, start=1):
-        isbn = (item.isbn or "").strip()
+        isbn = _normalize_isbn((item.isbn or "").strip())
         if not isbn:
             skipped.append({"row": index, "isbn": "", "reason": "Missing ISBN"})
             continue
@@ -175,7 +207,7 @@ def bulk_create_books(payload: BulkBooksRequest, current_user: dict = Depends(ge
 
         seen_isbns.add(isbn)
 
-        existing = list(db.books.where("isbn", "==", isbn).limit(1).stream())
+        existing = _resolve_duplicate_isbn_doc(db, isbn)
         if existing:
             skipped.append({"row": index, "isbn": isbn, "reason": "ISBN already exists"})
             continue
@@ -190,11 +222,15 @@ def bulk_create_books(payload: BulkBooksRequest, current_user: dict = Depends(ge
             "author": item.author.strip(),
             "category": item.category.strip(),
             "isbn": isbn,
+            "isbn_normalized": isbn,
             "description": (item.description or "").strip(),
             "rack_location": item.rack_location.strip() if item.rack_location else None,
             "total_copies": item.total_copies,
             "available_copies": available_copies,
             "cover_image": item.cover_image,
+            "source": "bulk_import",
+            "created_by": current_user.get("_id"),
+            "created_by_role": current_user.get("role"),
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
         }
@@ -221,16 +257,22 @@ def update_book(book_id: str, payload: BookUpdateRequest, current_user: dict = D
     if payload.available_copies > payload.total_copies:
         raise HTTPException(status_code=400, detail="available_copies cannot exceed total_copies")
 
+    normalized_isbn = _normalize_isbn((payload.isbn or "").strip())
+    if not normalized_isbn:
+        raise HTTPException(status_code=400, detail="ISBN is required")
+
     updates = {
         "title": payload.title.strip(),
         "author": payload.author.strip(),
         "category": payload.category.strip(),
-        "isbn": payload.isbn.strip(),
+        "isbn": normalized_isbn,
+        "isbn_normalized": normalized_isbn,
         "description": payload.description.strip(),
         "rack_location": payload.rack_location.strip() if payload.rack_location else None,
         "total_copies": payload.total_copies,
         "available_copies": payload.available_copies,
         "cover_image": payload.cover_image,
+        "updated_by": current_user.get("_id"),
         "updated_at": datetime.utcnow(),
     }
 
@@ -239,10 +281,9 @@ def update_book(book_id: str, payload: BookUpdateRequest, current_user: dict = D
     if not snapshot.exists:
         raise HTTPException(status_code=404, detail="Book not found")
 
-    isbn_matches = list(db.books.where("isbn", "==", updates["isbn"]).limit(1).stream())
-    if isbn_matches:
-        if isbn_matches[0].id != book_id:
-            raise HTTPException(status_code=400, detail="Book with this ISBN already exists")
+    duplicate = _resolve_duplicate_isbn_doc(db, normalized_isbn, exclude_book_id=book_id)
+    if duplicate:
+        raise HTTPException(status_code=400, detail="Book with this ISBN already exists")
 
     book_ref.update(updates)
     updated = doc_to_dict(book_ref.get())

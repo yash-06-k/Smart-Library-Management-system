@@ -61,8 +61,20 @@ const downloadFile = (content, name, type) => {
   window.URL.revokeObjectURL(url);
 };
 
+const formatDate = (value) => {
+  if (!value) {
+    return '';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  return parsed.toLocaleDateString();
+};
+
 export default function ReportDownloadPanel() {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [records, setRecords] = useState([]);
   const [students, setStudents] = useState([]);
   const [books, setBooks] = useState([]);
@@ -97,6 +109,7 @@ export default function ReportDownloadPanel() {
     let mounted = true;
     const load = async () => {
       setLoading(true);
+      setLoadError('');
       try {
         const [recordsResponse, studentsResponse, booksResponse] = await Promise.all([
           getBorrowRecords(),
@@ -109,6 +122,10 @@ export default function ReportDownloadPanel() {
         setRecords(recordsResponse.data || []);
         setStudents(studentsResponse.data || []);
         setBooks(booksResponse.data || []);
+      } catch (error) {
+        if (mounted) {
+          setLoadError(error?.response?.data?.detail || 'Unable to load report data.');
+        }
       } finally {
         if (mounted) {
           setLoading(false);
@@ -161,13 +178,32 @@ export default function ReportDownloadPanel() {
       let toDate = null;
       if (range === 'custom' && customEnd) {
         toDate = new Date(customEnd);
+        toDate.setHours(23, 59, 59, 999);
       }
 
       if (fromDate) {
-        data = data.filter((record) => new Date(record.borrow_date) >= fromDate);
+        data = data.filter((record) => {
+          if (!record.borrow_date) {
+            return false;
+          }
+          const borrowDate = new Date(record.borrow_date);
+          if (Number.isNaN(borrowDate.getTime())) {
+            return false;
+          }
+          return borrowDate >= fromDate;
+        });
       }
       if (toDate) {
-        data = data.filter((record) => new Date(record.borrow_date) <= toDate);
+        data = data.filter((record) => {
+          if (!record.borrow_date) {
+            return false;
+          }
+          const borrowDate = new Date(record.borrow_date);
+          if (Number.isNaN(borrowDate.getTime())) {
+            return false;
+          }
+          return borrowDate <= toDate;
+        });
       }
     }
 
@@ -188,9 +224,9 @@ export default function ReportDownloadPanel() {
         book_isbn: book?.isbn || record.book_isbn || '',
         category: book?.category || record.category || '',
         status: record.status,
-        borrow_date: record.borrow_date ? new Date(record.borrow_date).toLocaleDateString() : '',
-        due_date: record.due_date ? new Date(record.due_date).toLocaleDateString() : '',
-        return_date: record.return_date ? new Date(record.return_date).toLocaleDateString() : '',
+        borrow_date: formatDate(record.borrow_date),
+        due_date: formatDate(record.due_date),
+        return_date: formatDate(record.return_date),
         rack_location: book?.rack_location || record.rack_location || '',
         book_id: record.book_id,
         student_id: record.student_id,
@@ -249,6 +285,12 @@ export default function ReportDownloadPanel() {
     };
   };
 
+  const fileSuffix = useMemo(() => {
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const type = reportType === 'history' ? scope : reportType;
+    return `${type}-${stamp}`;
+  }, [reportType, scope]);
+
   const ensureReady = (typeOverride) => {
     const activeType = typeOverride || reportType;
     setDownloadError('');
@@ -268,8 +310,7 @@ export default function ReportDownloadPanel() {
       return;
     }
     const csv = buildCsv(reportRows);
-    const suffix = reportType === 'history' ? scope : reportType;
-    downloadFile(csv, `library-report-${suffix}.csv`, 'text/csv');
+    downloadFile(csv, `library-report-${fileSuffix}.csv`, 'text/csv');
   };
 
   const handleDownloadJson = () => {
@@ -277,8 +318,7 @@ export default function ReportDownloadPanel() {
       return;
     }
     const content = JSON.stringify(buildStructuredReport(), null, 2);
-    const suffix = reportType === 'history' ? scope : reportType;
-    downloadFile(content, `library-report-${suffix}.json`, 'application/json');
+    downloadFile(content, `library-report-${fileSuffix}.json`, 'application/json');
   };
 
   const handleDownloadPdf = (typeOverride) => {
@@ -288,7 +328,6 @@ export default function ReportDownloadPanel() {
     }
 
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 40;
     let cursorY = 50;
 
@@ -371,7 +410,8 @@ export default function ReportDownloadPanel() {
     });
 
     const suffix = activeType === 'history' ? scope : activeType;
-    doc.save(`library-report-${suffix}.pdf`);
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    doc.save(`library-report-${suffix}-${stamp}.pdf`);
   };
 
   return (
@@ -390,6 +430,7 @@ export default function ReportDownloadPanel() {
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-4">
           <div className="space-y-3">
+            {loadError ? <p className="text-xs text-rose-300">{loadError}</p> : null}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <label className="text-xs text-slate-400">Report Type</label>
@@ -501,7 +542,7 @@ export default function ReportDownloadPanel() {
               <div ref={dropdownRef} className="relative">
                 <button
                   onClick={() => setDownloadOpen((prev) => !prev)}
-                  className="rounded-xl bg-slate-900/70 border border-white/10 px-4 py-2 text-sm hover:bg-slate-900/90 flex items-center gap-2"
+                  className="rounded-xl bg-slate-900/70 border border-white/10 px-4 py-2 text-sm hover:bg-slate-900/90 flex items-center gap-2 min-h-[44px]"
                 >
                   Download Actions
                   <ChevronDown size={14} />
@@ -542,6 +583,24 @@ export default function ReportDownloadPanel() {
                   </div>
                 ) : null}
               </div>
+              <button
+                onClick={handleDownloadCsv}
+                className="rounded-xl bg-indigo-500/20 border border-indigo-300/30 px-4 py-2 text-xs hover:bg-indigo-500/30 min-h-[44px]"
+              >
+                CSV
+              </button>
+              <button
+                onClick={handleDownloadJson}
+                className="rounded-xl bg-cyan-500/20 border border-cyan-300/30 px-4 py-2 text-xs hover:bg-cyan-500/30 min-h-[44px]"
+              >
+                JSON
+              </button>
+              <button
+                onClick={() => handleDownloadPdf()}
+                className="rounded-xl bg-emerald-500/20 border border-emerald-300/30 px-4 py-2 text-xs hover:bg-emerald-500/30 min-h-[44px]"
+              >
+                PDF
+              </button>
             </div>
 
             {downloadError ? <p className="text-xs text-rose-300">{downloadError}</p> : null}
@@ -552,6 +611,13 @@ export default function ReportDownloadPanel() {
                 <button
                   onClick={() => {
                     setReportType('history');
+                    setScope('overall');
+                    setStatusFilter('all');
+                    setRange('all');
+                    setCustomStart('');
+                    setCustomEnd('');
+                    setStudentId('');
+                    setBookId('');
                     handleDownloadPdf('history');
                   }}
                   className="rounded-lg border border-white/10 px-3 py-1 hover:bg-slate-900/80"
@@ -561,6 +627,7 @@ export default function ReportDownloadPanel() {
                 <button
                   onClick={() => {
                     setReportType('student_profile');
+                    setScope('student');
                     handleDownloadPdf('student_profile');
                   }}
                   className="rounded-lg border border-white/10 px-3 py-1 hover:bg-slate-900/80"
@@ -570,6 +637,7 @@ export default function ReportDownloadPanel() {
                 <button
                   onClick={() => {
                     setReportType('book_profile');
+                    setScope('book');
                     handleDownloadPdf('book_profile');
                   }}
                   className="rounded-lg border border-white/10 px-3 py-1 hover:bg-slate-900/80"

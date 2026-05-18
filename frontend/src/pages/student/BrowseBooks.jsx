@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 
 import LoadingState from '../../components/LoadingState';
 import PageHeader from '../../components/PageHeader';
+import ScannerModal from '../../components/ScannerModal';
 import BookCover from '../../components/BookCover';
 import { borrowBook, getBooks, getRecommendations, reserveBook } from '../../services/api';
 
@@ -15,6 +16,8 @@ export default function BrowseBooks() {
   const [category, setCategory] = useState('');
   const [busyBookId, setBusyBookId] = useState('');
   const [error, setError] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanAction, setScanAction] = useState('view');
   const [availableOnly, setAvailableOnly] = useState(false);
   const [recommendations, setRecommendations] = useState([]);
   const [recommendationSource, setRecommendationSource] = useState('smart');
@@ -119,6 +122,41 @@ export default function BrowseBooks() {
     }
   };
 
+  const openScanner = (action) => {
+    setScanAction(action);
+    setScannerOpen(true);
+  };
+
+  const handleScanResult = async (value) => {
+    if (scanAction === 'view') {
+      navigate(`/books/${value}`);
+      return;
+    }
+
+    if (scanAction === 'borrow') {
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 7);
+      try {
+        const response = await borrowBook({
+          book_id: value,
+          due_date: dueDate,
+        });
+
+        if (!response.data) {
+          throw new Error('Invalid response from server');
+        }
+
+        setScannerOpen(false);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await loadBooks(search, category);
+      } catch (requestError) {
+        const errorMsg = requestError.response?.data?.detail || requestError.message || 'Borrow request failed';
+        setError(errorMsg);
+        console.error('Scan borrow error:', errorMsg);
+      }
+    }
+  };
+
   const visibleBooks = availableOnly ? books.filter((book) => (book.available_copies || 0) > 0) : books;
 
   return (
@@ -150,6 +188,22 @@ export default function BrowseBooks() {
         <div className="flex gap-2 md:col-span-full lg:col-span-auto flex-wrap lg:flex-nowrap">
           <button className="flex-1 md:flex-none rounded-xl bg-cyan-500/20 border border-cyan-300/30 hover:bg-cyan-500/30 px-4 py-2 text-sm">
             Apply
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openScanner('view')}
+            className="flex-1 md:flex-none rounded-xl bg-indigo-500/20 border border-indigo-300/30 hover:bg-indigo-500/30 px-4 py-2 text-sm"
+          >
+            Scan QR
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openScanner('borrow')}
+            className="flex-1 md:flex-none rounded-xl bg-emerald-500/20 border border-emerald-300/30 hover:bg-emerald-500/30 px-4 py-2 text-sm"
+          >
+            Scan & Borrow
           </button>
 
           <button
@@ -267,6 +321,13 @@ export default function BrowseBooks() {
         </div>
       )}
 
+      <ScannerModal
+        open={scannerOpen}
+        title="Scan Book QR"
+        formats="qr"
+        onResult={handleScanResult}
+        onClose={() => setScannerOpen(false)}
+      />
     </div>
   );
 }

@@ -164,6 +164,12 @@ const invalidateBorrowingCaches = () => {
   invalidateCachePattern('GET:/admin/analytics');
 };
 
+const invalidateCatalogCaches = () => {
+  invalidateCachePattern('GET:/books');
+  invalidateCachePattern('GET:/admin/metrics');
+  invalidateCachePattern('GET:/admin/analytics');
+};
+
 const withNormalizedBorrowRecord = (response) => {
   const normalized = normalizeBorrowRecord(response?.data);
   return withResponseData(response, normalized || response.data);
@@ -270,8 +276,9 @@ export const getBooks = (params = {}) => {
   const cacheKey = APICache.generateKey('GET', '/books', params);
   return cachedRequest(
     () => requestWithFallback([
-      () => api.get('/api/books/', { params }),
+      () => api.get('/api/books', { params }),
       () => api.get('/books', { params }),
+      () => api.get('/api/books/', { params }),
     ]).then((response) => withResponseData(response, normalizeBooks(response.data))),
     cacheKey,
     10 * 60 * 1000 // 10 minute cache for books
@@ -292,30 +299,48 @@ export const getBookById = (bookId) => {
 
 export const createBook = (payload) =>
   requestWithFallback([
-    () => api.post('/api/books/', payload),
+    () => api.post('/api/books', payload),
     () => api.post('/books', payload),
-  ]).then((response) => withResponseData(response, normalizeBook(response.data)));
+    () => api.post('/api/books/', payload),
+  ]).then((response) => {
+    invalidateCatalogCaches();
+    return withResponseData(response, normalizeBook(response.data));
+  });
 
 export const updateBook = (bookId, payload) =>
   requestWithFallback([
     () => api.put(`/api/books/${bookId}`, payload),
     () => api.put(`/books/${bookId}`, payload),
-  ]).then((response) => withResponseData(response, normalizeBook(response.data)));
+  ]).then((response) => {
+    invalidateCatalogCaches();
+    return withResponseData(response, normalizeBook(response.data));
+  });
 
 export const deleteBook = (bookId) =>
   requestWithFallback([
     () => api.delete(`/api/books/${bookId}`),
     () => api.delete(`/books/${bookId}`),
-  ]);
+  ]).then((response) => {
+    invalidateCatalogCaches();
+    return response;
+  });
 
 export const bulkCreateBooks = (payload) =>
   requestWithFallback([
     () => api.post('/api/books/bulk', payload),
     () => api.post('/books/bulk', payload),
-  ]).then((response) => withResponseData(response, normalizeBooks(response.data?.created || []).length ? {
-    ...response.data,
-    created: normalizeBooks(response.data.created || []),
-  } : response.data));
+  ]).then((response) => {
+    invalidateCatalogCaches();
+    return withResponseData(
+      response,
+      normalizeBooks(response.data?.created || []).length
+        ? {
+            ...response.data,
+            created: normalizeBooks(response.data.created || []),
+          }
+        : response.data
+    );
+  });
 
 export const borrowBook = async (payload) => {
   // Ensure due_date is in proper format (ISO string for API)

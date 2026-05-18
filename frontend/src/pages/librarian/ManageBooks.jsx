@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, Pencil, Plus, Trash2, UploadCloud } from 'lucide-react';
 import LoadingState from '../../components/LoadingState';
 import PageHeader from '../../components/PageHeader';
 import ScannerModal from '../../components/ScannerModal';
 import BookCover from '../../components/BookCover';
 import QrCodePreview from '../../components/QrCodePreview';
+import BulkImportPanel from '../../components/BulkImportPanel';
 import { createBook, deleteBook, getBooks, updateBook } from '../../services/api';
 
 const defaultFormState = {
@@ -30,6 +31,7 @@ export default function ManageBooks() {
   const [formState, setFormState] = useState(defaultFormState);
   const [editingId, setEditingId] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -37,11 +39,12 @@ export default function ManageBooks() {
   const [scannedBook, setScannedBook] = useState(null);
   const [scanNotice, setScanNotice] = useState('');
   const [qrModalBook, setQrModalBook] = useState(null);
+  const [showImportPanel, setShowImportPanel] = useState(false);
 
   const loadBooks = async () => {
     setLoading(true);
     try {
-      const response = await getBooks();
+      const response = await getBooks({ limit: 500 });
       setBooks(response.data);
     } catch (requestError) {
       setError(requestError.response?.data?.detail || 'Failed to load books');
@@ -63,21 +66,61 @@ export default function ManageBooks() {
     event.preventDefault();
     setSubmitting(true);
     setError('');
+    setSuccess('');
+
+    const title = String(formState.title || '').trim();
+    const author = String(formState.author || '').trim();
+    const category = String(formState.category || '').trim();
+    const isbn = normalizeIsbn(formState.isbn);
+    const description = String(formState.description || '').trim();
+    const rackLocation = String(formState.rack_location || '').trim();
+    const totalCopies = Number(formState.total_copies);
+    const availableCopies = Number(formState.available_copies);
+
+    if (!title || !author || !category || !isbn) {
+      setSubmitting(false);
+      setError('Title, author, category, and ISBN are required.');
+      return;
+    }
+
+    if (!Number.isFinite(totalCopies) || totalCopies < 1) {
+      setSubmitting(false);
+      setError('Total copies must be at least 1.');
+      return;
+    }
+
+    if (!Number.isFinite(availableCopies) || availableCopies < 0) {
+      setSubmitting(false);
+      setError('Available copies cannot be negative.');
+      return;
+    }
+
+    if (availableCopies > totalCopies) {
+      setSubmitting(false);
+      setError('Available copies cannot be greater than total copies.');
+      return;
+    }
 
     const payload = {
-      ...formState,
-      total_copies: Number(formState.total_copies),
-      available_copies: Number(formState.available_copies),
-      cover_image: formState.cover_image || null,
-      rack_location: formState.rack_location || null,
+      title,
+      author,
+      category,
+      isbn,
+      description,
+      rack_location: rackLocation || null,
+      total_copies: totalCopies,
+      available_copies: availableCopies,
+      cover_image: String(formState.cover_image || '').trim() || null,
     };
 
     try {
       if (editingId) {
         await updateBook(editingId, payload);
+        setSuccess('Book updated successfully.');
       } else {
         const response = await createBook(payload);
         setQrModalBook(response.data);
+        setSuccess('Book added successfully and saved to Firebase.');
       }
       resetForm();
       await loadBooks();
@@ -175,9 +218,37 @@ export default function ManageBooks() {
       <PageHeader title="Manage Books" subtitle="Add, edit, and delete Firestore book records." />
 
       {error ? <p className="text-rose-300 text-sm mb-4">{error}</p> : null}
+      {success ? (
+        <p className="text-emerald-300 text-sm mb-4 flex items-center gap-2">
+          <CheckCircle2 size={14} />
+          {success}
+        </p>
+      ) : null}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-5">
-        <form onSubmit={handleSubmit} className="glass-card rounded-2xl p-4 space-y-3 h-fit sticky top-4 lg:top-6">
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setShowImportPanel((prev) => !prev)}
+          className="rounded-xl bg-emerald-500/20 border border-emerald-300/30 px-4 py-2 text-sm hover:bg-emerald-500/30 min-h-[44px] inline-flex items-center gap-2"
+        >
+          <UploadCloud size={16} />
+          {showImportPanel ? 'Hide Upload Panel' : 'Add Books via File Upload'}
+        </button>
+      </div>
+
+      {showImportPanel ? (
+        <div className="mb-5">
+          <BulkImportPanel
+            onImportComplete={async () => {
+              setSuccess('Bulk import completed and saved to Firebase.');
+              await loadBooks();
+            }}
+          />
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 xl:grid-cols-[380px_1fr] gap-5">
+        <form onSubmit={handleSubmit} className="glass-card rounded-2xl p-4 space-y-3 h-fit xl:sticky xl:top-6">
           <h3 className="text-white text-lg font-medium flex items-center gap-2">
             <Plus size={16} />
             {editingId ? 'Edit Book' : 'Add Book'}
@@ -205,7 +276,21 @@ export default function ManageBooks() {
               className="field"
               placeholder="Total"
               value={formState.total_copies}
-              onChange={(event) => setFormState((prev) => ({ ...prev, total_copies: event.target.value }))}
+              onChange={(event) =>
+                setFormState((prev) => {
+                  const nextTotal = event.target.value;
+                  const parsedTotal = Number(nextTotal);
+                  const parsedAvailable = Number(prev.available_copies);
+                  return {
+                    ...prev,
+                    total_copies: nextTotal,
+                    available_copies:
+                      Number.isFinite(parsedTotal) && Number.isFinite(parsedAvailable) && parsedAvailable > parsedTotal
+                        ? nextTotal
+                        : prev.available_copies,
+                  };
+                })
+              }
               required
             />
             <input
@@ -301,7 +386,7 @@ export default function ManageBooks() {
                     <td data-label="Status">{book.availability_status || 'Available'}</td>
                     <td data-label="Available">{book.available_copies}/{book.total_copies}</td>
                     <td data-label="Actions">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button onClick={() => startEdit(book)} className="p-2 rounded-lg bg-slate-900/70 border border-white/10 hover:bg-slate-800 min-h-[44px] min-w-[44px] flex items-center justify-center" title="Edit">
                           <Pencil size={14} />
                         </button>
@@ -373,7 +458,14 @@ export default function ManageBooks() {
             })()}
             <div className="flex justify-center">
               <button
-                onClick={() => navigate(`/books/${qrModalBook._id}`)}
+                onClick={() => {
+                  const targetId = resolveBookId(qrModalBook);
+                  if (!targetId) {
+                    setError('Open details failed: missing book ID.');
+                    return;
+                  }
+                  navigate(`/books/${targetId}`);
+                }}
                 className="rounded-xl bg-cyan-500/20 border border-cyan-300/30 px-4 py-2 text-sm hover:bg-cyan-500/30"
               >
                 Open Book Details

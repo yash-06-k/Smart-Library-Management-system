@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react';
 
 import LoadingState from '../../components/LoadingState';
 import PageHeader from '../../components/PageHeader';
-import { getBorrowRecords, returnBook } from '../../services/api';
+import ScannerModal from '../../components/ScannerModal';
+import { getBorrowRecords, returnBook, returnBookByBookId } from '../../services/api';
 
 export default function BorrowedBooks() {
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState([]);
   const [busyRecordId, setBusyRecordId] = useState('');
   const [error, setError] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const loadRecords = async () => {
     setLoading(true);
@@ -46,6 +48,22 @@ export default function BorrowedBooks() {
     }
   };
 
+  const handleScanReturn = async (bookId) => {
+    setError('');
+    try {
+      const response = await returnBookByBookId(bookId);
+      if (!response.data) {
+        throw new Error('Invalid response from server');
+      }
+      setScannerOpen(false);
+      await loadRecords();
+    } catch (requestError) {
+      const errorMsg = requestError.response?.data?.detail || requestError.message || 'Return failed';
+      setError(errorMsg);
+      console.error('Return error:', errorMsg);
+    }
+  };
+
   if (loading) {
     return <LoadingState label="Loading borrowed books..." />;
   }
@@ -53,6 +71,15 @@ export default function BorrowedBooks() {
   return (
     <div>
       <PageHeader title="Borrowed Books" subtitle="Return books and monitor due dates." />
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          onClick={() => setScannerOpen(true)}
+          className="rounded-xl bg-emerald-500/20 border border-emerald-300/30 px-4 py-2 text-sm hover:bg-emerald-500/30 min-h-[44px]"
+        >
+          Return via QR
+        </button>
+      </div>
 
       {error ? <p className="text-rose-300 text-sm mb-4">{error}</p> : null}
 
@@ -101,6 +128,13 @@ export default function BorrowedBooks() {
         </table>
       </div>
 
+      <ScannerModal
+        open={scannerOpen}
+        title="Scan Book QR to Return"
+        formats="qr"
+        onResult={handleScanReturn}
+        onClose={() => setScannerOpen(false)}
+      />
     </div>
   );
 }

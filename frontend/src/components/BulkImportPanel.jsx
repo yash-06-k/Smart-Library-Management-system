@@ -19,6 +19,7 @@ const headerAliases = {
 };
 
 const normalizeKey = (value) => String(value || '').trim().toLowerCase();
+const normalizeIsbn = (value) => String(value || '').replace(/[^0-9Xx]/g, '').toUpperCase();
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -62,7 +63,7 @@ const buildBookFromRow = (row) => {
     title,
     author,
     category,
-    isbn,
+    isbn: normalizeIsbn(isbn),
     description,
     rack_location: rackLocation || null,
     total_copies: Math.max(1, Math.floor(totalCopies || 1)),
@@ -80,7 +81,7 @@ const parseDelimitedLines = (text) => {
     if (lower.includes('title') && lower.includes('isbn')) {
       return;
     }
-    const delimiter = line.includes('|') ? '|' : line.includes(',') ? ',' : null;
+    const delimiter = line.includes('|') ? '|' : line.includes('\t') ? '\t' : line.includes(',') ? ',' : null;
     if (!delimiter) {
       return;
     }
@@ -106,7 +107,7 @@ const parseDelimitedLines = (text) => {
       title: title || '',
       author: author || '',
       category: category || '',
-      isbn: isbn || '',
+      isbn: normalizeIsbn(isbn),
       description: description || '',
       rack_location: rackLocation || null,
       total_copies: coerceNumber(totalCopies, 1),
@@ -130,11 +131,11 @@ export default function BulkImportPanel({ onImportComplete }) {
     let mounted = true;
     const loadExisting = async () => {
       try {
-        const response = await getBooks();
+        const response = await getBooks({ limit: 500 });
         if (!mounted) {
           return;
         }
-        const isbnSet = new Set((response.data || []).map((book) => String(book.isbn || '').trim()));
+        const isbnSet = new Set((response.data || []).map((book) => normalizeIsbn(book.isbn)));
         setExistingIsbns(isbnSet);
       } catch {
         if (mounted) {
@@ -168,7 +169,18 @@ export default function BulkImportPanel({ onImportComplete }) {
   }, [parsedBooks, existingIsbns]);
 
   const validBooks = useMemo(() => {
-    return parsedBooks.filter((book) => book.title && book.author && book.category && book.isbn);
+    return parsedBooks.filter((book) => {
+      if (!book.title || !book.author || !book.category || !book.isbn) {
+        return false;
+      }
+      if (book.total_copies < 1) {
+        return false;
+      }
+      if (book.available_copies < 0 || book.available_copies > book.total_copies) {
+        return false;
+      }
+      return true;
+    });
   }, [parsedBooks]);
 
   const importableBooks = useMemo(() => {
@@ -225,6 +237,27 @@ export default function BulkImportPanel({ onImportComplete }) {
         return;
       }
 
+      const lowerName = file.name.toLowerCase();
+      if (lowerName.endsWith('.txt') || lowerName.endsWith('.tsv')) {
+        const text = await file.text();
+        const parsed = parseDelimitedLines(text);
+        if (parsed.length === 0) {
+          throw new Error('Text format not recognized. Use comma, tab, or | separated rows.');
+        }
+        setParsedBooks(parsed.map((row) => buildBookFromRow(row)));
+        return;
+      }
+
+      if (lowerName.endsWith('.json')) {
+        const text = await file.text();
+        const parsedJson = JSON.parse(text);
+        if (!Array.isArray(parsedJson)) {
+          throw new Error('JSON must be an array of book objects.');
+        }
+        setParsedBooks(parsedJson.map(buildBookFromRow));
+        return;
+      }
+
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -259,7 +292,7 @@ export default function BulkImportPanel({ onImportComplete }) {
         <div>
           <h3 className="text-lg font-semibold text-white">Bulk Import Books</h3>
           <p className="text-xs text-slate-400 mt-1">
-            Upload Excel (.xlsx), CSV, or text-based PDF with columns: title, author, category, isbn, description,
+            Upload Excel (.xlsx/.xls), CSV/TSV, TXT, JSON, or text-based PDF with columns: title, author, category, isbn, description,
             rack_location, total_copies, available_copies, cover_image.
           </p>
         </div>
@@ -268,7 +301,7 @@ export default function BulkImportPanel({ onImportComplete }) {
           <span>{fileName ? 'Replace file' : 'Choose file'}</span>
           <input
             type="file"
-            accept=".xlsx,.xls,.csv,.pdf"
+            accept=".xlsx,.xls,.csv,.tsv,.txt,.json,.pdf"
             className="hidden"
             onChange={handleFileChange}
           />
@@ -312,9 +345,16 @@ export default function BulkImportPanel({ onImportComplete }) {
                 {parsedBooks.slice(0, 6).map((book, index) => {
                   const duplicateFile = duplicatesInFile.has(book.isbn);
                   const duplicateDb = duplicatesInDatabase.has(book.isbn);
-                  const invalid = !book.title || !book.author || !book.category || !book.isbn;
+                  const invalidRequired = !book.title || !book.author || !book.category || !book.isbn;
+                  const invalidCopies =
+                    Number(book.total_copies) < 1 ||
+                    Number(book.available_copies) < 0 ||
+                    Number(book.available_copies) > Number(book.total_copies);
+                  const invalid = invalidRequired || invalidCopies;
                   const status = invalid
-                    ? 'Missing fields'
+                    ? invalidCopies
+                      ? 'Invalid copy counts'
+                      : 'Missing fields'
                     : duplicateFile
                       ? 'Duplicate in file'
                       : duplicateDb
