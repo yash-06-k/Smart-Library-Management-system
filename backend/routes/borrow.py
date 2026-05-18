@@ -1,6 +1,7 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from google.cloud import firestore
 from google.cloud.firestore_v1 import Increment
 
 from database import doc_to_dict, get_db, serialize_document
@@ -8,6 +9,10 @@ from models.schemas import BorrowRequest, ExtendBorrowRequest, ReserveRequest, R
 from services.auth import get_current_librarian, get_current_student
 
 router = APIRouter(tags=["Borrow"])
+
+ACTIVE_BORROW_STATUSES = {"Borrowed", "Overdue"}
+TERMINAL_BORROW_STATUSES = {"Returned"}
+KNOWN_BORROW_STATUSES = ACTIVE_BORROW_STATUSES | TERMINAL_BORROW_STATUSES | {"Reserved"}
 
 
 def _find_student(student_id: str):
@@ -28,6 +33,29 @@ def _normalize_isbn(value: str | None) -> str:
     if not value:
         return ""
     return "".join([ch for ch in value if ch.isdigit() or ch in "Xx"]).upper()
+
+
+def _coerce_datetime(value) -> datetime | None:
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    if isinstance(value, str):
+        candidate = value.strip()
+        if not candidate:
+            return None
+
+        try:
+            parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+
+    return None
 
 
 def _find_book_by_id_or_isbn(db, book_id: str):
@@ -83,17 +111,6 @@ def _borrow_book(payload: BorrowRequest, current_user: dict):
     book = doc_to_dict(book_snapshot)
     book_ref = db.books.document(book["_id"])
 
-    available = book.get("available_copies") or 0
-    if available <= 0:
-        raise HTTPException(status_code=400, detail=f"Book is currently unavailable. ({available} copies available)")
-
-    book_ref.update(
-        {
-            "available_copies": Increment(-1),
-            "updated_at": datetime.utcnow(),
-        }
-    )
-
     borrow_date = payload.borrow_date or datetime.utcnow()
     due_date = payload.due_date or (borrow_date + timedelta(days=7))
 
@@ -114,8 +131,40 @@ def _borrow_book(payload: BorrowRequest, current_user: dict):
         "updated_at": datetime.utcnow(),
     }
 
+    transaction = db.client.transaction()
     record_ref = db.borrow_records.document()
-    record_ref.set(borrow_record)
+
+    @firestore.transactional
+    def _commit_borrow(txn):
+        fresh_book_snapshot = book_ref.get(transaction=txn)
+        if not fresh_book_snapshot.exists:
+            raise HTTPException(status_code=404, detail="Book not found")
+
+        fresh_book = doc_to_dict(fresh_book_snapshot) or {}
+        available = int(fresh_book.get("available_copies") or 0)
+        if available <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Book is currently unavailable. ({available} copies available)",
+            )
+
+        now = datetime.utcnow()
+        payload_to_write = {
+            **borrow_record,
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        txn.update(
+            book_ref,
+            {
+                "available_copies": Increment(-1),
+                "updated_at": now,
+            },
+        )
+        txn.set(record_ref, payload_to_write)
+
+    _commit_borrow(transaction)
     created = doc_to_dict(record_ref.get())
     return serialize_document(created)
 
@@ -140,18 +189,19 @@ def _list_borrow_records(current_user: dict, student_id: str | None, status: str
     elif student_id:
         query = query.where("student_id", "==", student_id)
 
-    # Apply status filter at query level if requesting specific statuses
-    if status and status != "Overdue":  # Overdue is computed, not stored
-        query = query.where("status", "==", status)
-
-    # Fetch all records (with limit) and sort in memory
+    # Fetch all records (with limit) and sort in memory.
+    # This avoids composite-index dependency for status+student combinations.
     all_records = [doc_to_dict(doc) for doc in query.limit(limit + skip).stream() if doc.exists]
-    all_records.sort(key=lambda record: record.get("borrow_date") or datetime.min, reverse=True)
+    all_records.sort(
+        key=lambda record: _coerce_datetime(record.get("borrow_date")) or datetime.min,
+        reverse=True,
+    )
 
     # Update overdue status dynamically
     now = datetime.utcnow()
     for record in all_records:
-        if record.get("status") == "Borrowed" and record.get("due_date") and record["due_date"] < now:
+        due_date = _coerce_datetime(record.get("due_date"))
+        if record.get("status") == "Borrowed" and due_date and due_date < now:
             record["status"] = "Overdue"
 
     # Filter by computed overdue status if needed
@@ -210,11 +260,13 @@ def reserve_book(payload: ReserveRequest, current_user: dict = Depends(get_curre
     if (book.get("available_copies") or 0) > 0:
         raise HTTPException(status_code=400, detail="Book is available. Borrow it instead of reserving.")
 
+    resolved_book_id = str(book["_id"])
+
     existing = list(
         db.borrow_records
-        .where("book_id", "==", payload.book_id)
+        .where("book_id", "==", resolved_book_id)
         .where("student_id", "==", current_user["_id"])
-        .where("status", "in", ["Reserved", "Borrowed", "Overdue"])
+        .where("status", "in", ["Reserved", *ACTIVE_BORROW_STATUSES])
         .limit(1)
         .stream()
     )
@@ -227,7 +279,7 @@ def reserve_book(payload: ReserveRequest, current_user: dict = Depends(get_curre
         "book_title": book.get("title", "Unknown Book"),
         "book_author": book.get("author", ""),
         "book_isbn": book.get("isbn", ""),
-        "book_id": payload.book_id,
+        "book_id": resolved_book_id,
         "category": book.get("category", "Uncategorized"),
         "rack_location": book.get("rack_location"),
         "borrow_date": None,
@@ -244,6 +296,28 @@ def reserve_book(payload: ReserveRequest, current_user: dict = Depends(get_curre
     return serialize_document(created)
 
 
+def _find_next_reservation_for_book(book_id: str):
+    db = get_db()
+    candidates = [
+        doc_to_dict(doc)
+        for doc in db.borrow_records.where("book_id", "==", book_id).stream()
+        if doc.exists
+    ]
+    active_reservations = [item for item in candidates if item and item.get("status") == "Reserved"]
+    active_reservations.sort(key=lambda item: item.get("created_at") or datetime.min)
+    return active_reservations[0] if active_reservations else None
+
+
+def _annotate_idempotent_return(record: dict) -> dict:
+    return serialize_document(
+        {
+            **record,
+            "already_returned": True,
+            "idempotent": True,
+        }
+    )
+
+
 def _mark_returned(record_id: str, current_user: dict, return_date: datetime | None = None):
     db = get_db()
 
@@ -256,32 +330,62 @@ def _mark_returned(record_id: str, current_user: dict, return_date: datetime | N
     if current_user["role"] == "student" and record.get("student_id") != current_user["_id"]:
         raise HTTPException(status_code=403, detail="Students can only return their own borrowed books")
 
-    if record.get("status") == "Returned":
-        raise HTTPException(status_code=400, detail="Book already returned")
+    if record.get("status") in TERMINAL_BORROW_STATUSES:
+        return _annotate_idempotent_return(record)
+    if record.get("status") not in ACTIVE_BORROW_STATUSES:
+        raise HTTPException(status_code=400, detail="Only active borrowed books can be returned")
 
     final_return_date = return_date or datetime.utcnow()
-    record_ref.update(
-        {
-            "status": "Returned",
-            "return_date": final_return_date,
-            "updated_at": datetime.utcnow(),
-        }
-    )
+    now = datetime.utcnow()
 
-    db.books.document(record["book_id"]).update(
-        {"available_copies": Increment(1), "updated_at": datetime.utcnow()}
-    )
+    book_ref = db.books.document(record["book_id"])
+    transaction = db.client.transaction()
 
-    reservations = list(
-        db.borrow_records
-        .where("book_id", "==", record["book_id"])
-        .where("status", "==", "Reserved")
-        .order_by("created_at")
-        .limit(1)
-        .stream()
-    )
-    if reservations:
-        reservation = doc_to_dict(reservations[0])
+    @firestore.transactional
+    def _commit_return(txn):
+        fresh_record_snapshot = record_ref.get(transaction=txn)
+        if not fresh_record_snapshot.exists:
+            raise HTTPException(status_code=404, detail="Borrow record not found")
+
+        fresh_record = doc_to_dict(fresh_record_snapshot) or {}
+        fresh_status = fresh_record.get("status")
+        if fresh_status in TERMINAL_BORROW_STATUSES:
+            return False
+        if fresh_status not in ACTIVE_BORROW_STATUSES:
+            raise HTTPException(status_code=400, detail="Only active borrowed books can be returned")
+
+        fresh_book_snapshot = book_ref.get(transaction=txn)
+        if not fresh_book_snapshot.exists:
+            raise HTTPException(status_code=404, detail="Book not found")
+
+        txn.update(
+            record_ref,
+            {
+                "status": "Returned",
+                "return_date": final_return_date,
+                "returned_by": current_user.get("_id"),
+                "returned_by_role": current_user.get("role"),
+                "updated_at": now,
+            },
+        )
+        txn.update(
+            book_ref,
+            {
+                "available_copies": Increment(1),
+                "updated_at": now,
+            },
+        )
+        return True
+
+    did_update = _commit_return(transaction)
+    if did_update is False:
+        refreshed = doc_to_dict(record_ref.get())
+        if not refreshed:
+            raise HTTPException(status_code=404, detail="Borrow record not found")
+        return _annotate_idempotent_return(refreshed)
+
+    try:
+        reservation = _find_next_reservation_for_book(record["book_id"])
         if reservation:
             db.notifications.document().set(
                 {
@@ -293,9 +397,66 @@ def _mark_returned(record_id: str, current_user: dict, return_date: datetime | N
                     "read": False,
                 }
             )
+    except Exception:
+        # Return should succeed even if reservation notification dispatch fails.
+        pass
 
     updated = doc_to_dict(record_ref.get())
     return serialize_document(updated)
+
+
+def _build_borrow_health(limit: int = 300):
+    db = get_db()
+    docs = [doc_to_dict(doc) for doc in db.borrow_records.limit(limit).stream() if doc.exists]
+
+    total_records = len(docs)
+    active_records = 0
+    returned_records = 0
+    reserved_records = 0
+    unknown_status_records = 0
+    missing_book_reference_records = 0
+    invalid_due_date_records = 0
+
+    for record in docs:
+        status = (record or {}).get("status")
+        if status in ACTIVE_BORROW_STATUSES:
+            active_records += 1
+        elif status in TERMINAL_BORROW_STATUSES:
+            returned_records += 1
+        elif status == "Reserved":
+            reserved_records += 1
+        else:
+            unknown_status_records += 1
+
+        due = _coerce_datetime((record or {}).get("due_date"))
+        if status in ACTIVE_BORROW_STATUSES and not due:
+            invalid_due_date_records += 1
+
+        book_id = (record or {}).get("book_id")
+        if not book_id:
+            missing_book_reference_records += 1
+        else:
+            book_doc = db.books.document(book_id).get()
+            if not book_doc.exists:
+                missing_book_reference_records += 1
+
+    return {
+        "ok": unknown_status_records == 0 and invalid_due_date_records == 0 and missing_book_reference_records == 0,
+        "checked_records": total_records,
+        "limit": limit,
+        "counts": {
+            "active": active_records,
+            "returned": returned_records,
+            "reserved": reserved_records,
+            "unknown_status": unknown_status_records,
+        },
+        "anomalies": {
+            "missing_book_reference_records": missing_book_reference_records,
+            "invalid_due_date_records": invalid_due_date_records,
+        },
+        "known_statuses": sorted(KNOWN_BORROW_STATUSES),
+        "checked_at": datetime.utcnow().isoformat(),
+    }
 
 
 @router.post("/return-by-book/{book_id}")
@@ -305,17 +466,21 @@ def return_by_book(book_id: str, current_user: dict = Depends(get_current_studen
     resolved_snapshot = _find_book_by_id_or_isbn(db, book_id)
     resolved_id = doc_to_dict(resolved_snapshot)["_id"] if resolved_snapshot else book_id
 
-    query = db.borrow_records.where("book_id", "==", resolved_id).where("status", "in", ["Borrowed", "Overdue"])
-    if current_user["role"] == "student":
-        query = query.where("student_id", "==", current_user["_id"])
-    query = query.limit(1)
-    records = list(query.stream())
-    if not records:
-        raise HTTPException(status_code=404, detail="No active borrow record found for this book.")
+    candidates = [
+        doc_to_dict(doc)
+        for doc in db.borrow_records.where("book_id", "==", resolved_id).stream()
+        if doc.exists
+    ]
+    active_candidates = [item for item in candidates if item and item.get("status") in ACTIVE_BORROW_STATUSES]
 
-    record = doc_to_dict(records[0])
+    if current_user["role"] == "student":
+        active_candidates = [item for item in active_candidates if item.get("student_id") == current_user["_id"]]
+
+    active_candidates.sort(key=lambda item: item.get("borrow_date") or datetime.min, reverse=True)
+    record = active_candidates[0] if active_candidates else None
+
     if not record:
-        raise HTTPException(status_code=404, detail="Borrow record not found")
+        raise HTTPException(status_code=404, detail="No active borrow record found for this book.")
 
     if current_user["role"] == "student" and record.get("student_id") != current_user["_id"]:
         raise HTTPException(status_code=403, detail="Students can only return their own borrowed books")
@@ -326,6 +491,22 @@ def return_by_book(book_id: str, current_user: dict = Depends(get_current_studen
 @router.post("/return")
 def return_book(payload: ReturnRequest, current_user: dict = Depends(get_current_student)):
     return _mark_returned(payload.borrow_record_id, current_user, payload.return_date)
+
+
+@router.get("/borrow/health")
+def borrow_system_health(
+    limit: int = Query(default=300, ge=1, le=1000),
+    current_user: dict = Depends(get_current_librarian),
+):
+    return _build_borrow_health(limit)
+
+
+@router.get("/admin/borrow-health")
+def legacy_borrow_system_health(
+    limit: int = Query(default=300, ge=1, le=1000),
+    current_user: dict = Depends(get_current_librarian),
+):
+    return _build_borrow_health(limit)
 
 
 @router.put("/borrow-records/{borrow_record_id}/mark-returned")
@@ -381,7 +562,7 @@ def delete_borrow_record(borrow_record_id: str, current_user: dict = Depends(get
         raise HTTPException(status_code=404, detail="Borrow record not found")
     record = doc_to_dict(record_snapshot)
 
-    if record.get("status") != "Returned":
+    if record.get("status") in ACTIVE_BORROW_STATUSES:
         db.books.document(record["book_id"]).update(
             {"available_copies": Increment(1), "updated_at": datetime.utcnow()}
         )

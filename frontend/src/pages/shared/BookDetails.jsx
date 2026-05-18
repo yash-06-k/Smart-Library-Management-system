@@ -5,10 +5,12 @@ import LoadingState from '../../components/LoadingState';
 import PageHeader from '../../components/PageHeader';
 import BookCover from '../../components/BookCover';
 import QrCodePreview from '../../components/QrCodePreview';
+import { isLibrarianSession } from '../../lib/authSession';
 import { getBookById } from '../../services/api';
 
 export default function BookDetailsPage() {
   const { bookId } = useParams();
+  const canShowQr = isLibrarianSession();
   const [loading, setLoading] = useState(true);
   const [book, setBook] = useState(null);
   const [error, setError] = useState('');
@@ -92,23 +94,25 @@ export default function BookDetailsPage() {
           </div>
         </section>
 
-        <aside className="glass-card rounded-2xl p-5 flex flex-col items-center gap-4">
-          <h3 className="text-white font-semibold">Book QR Code</h3>
-          <QrCodePreview
-            value={book?._id || book?.id || book?.isbn || bookId}
-            size={240}
-            alt="Book QR code"
-            className="w-56 h-56 rounded-xl border border-white/10 bg-white p-3"
-            emptyLabel={
-              <div className="w-56 h-56 rounded-xl border border-white/10 bg-slate-900/70 flex items-center justify-center text-xs text-slate-400">
-                QR not available
-              </div>
-            }
-          />
-          <p className="text-xs text-slate-400 text-center">
-            Scan this QR code to open this book profile instantly.
-          </p>
-        </aside>
+        {canShowQr ? (
+          <aside className="glass-card rounded-2xl p-5 flex flex-col items-center gap-4">
+            <h3 className="text-white font-semibold">Book QR Code</h3>
+            <QrCodePreview
+              value={book?._id || book?.id || book?.isbn || bookId}
+              size={240}
+              alt="Book QR code"
+              className="w-56 h-56 rounded-xl border border-white/10 bg-white p-3"
+              emptyLabel={
+                <div className="w-56 h-56 rounded-xl border border-white/10 bg-slate-900/70 flex items-center justify-center text-xs text-slate-400">
+                  QR not available
+                </div>
+              }
+            />
+            <p className="text-xs text-slate-400 text-center">
+              Scan this QR code to open this book profile instantly.
+            </p>
+          </aside>
+        ) : null}
       </div>
     </div>
   );

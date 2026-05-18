@@ -23,6 +23,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import LayoutShell from './components/LayoutShell';
 import LoadingState from './components/LoadingState';
 import { auth } from './firebase';
+import { clearSessionUser, setSessionUser } from './lib/authSession';
 import { loginUser, signupUser } from './services/api';
 
 // Lazy load pages for code splitting
@@ -107,6 +108,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
+        clearSessionUser();
         setUser(null);
         setLoading(false);
         return;
@@ -149,16 +151,19 @@ export default function App() {
           }
         }
 
-        setUser({
+        const nextUser = {
           _id: userId,
           name: userName,
           email: firebaseUser.email,
           role: userRole,
           firebase_uid: firebaseUser.uid,
-        });
+        };
+        setSessionUser(nextUser);
+        setUser(nextUser);
       } catch (requestError) {
         console.error("Auth state error:", requestError);
         await signOut(auth);
+        clearSessionUser();
         setUser(null);
       } finally {
         setLoading(false);
@@ -170,6 +175,7 @@ export default function App() {
 
   const handleLogout = async () => {
     await signOut(auth);
+    clearSessionUser();
     setUser(null);
     sessionStorage.removeItem("MOCK_ROLE");
     sessionStorage.removeItem("MOCK_NAME");

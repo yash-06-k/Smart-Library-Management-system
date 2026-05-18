@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Clock3, History, ScanLine, Sparkles, Timer } from 'lucide-react';
+import { BookOpen, Clock3, History, Sparkles, Timer } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import LoadingState from '../../components/LoadingState';
 import BookCover from '../../components/BookCover';
 import PageHeader from '../../components/PageHeader';
-import ScannerModal from '../../components/ScannerModal';
 import StatCard from '../../components/StatCard';
-import { borrowBook, getBooks, getBorrowRecords, getNotifications } from '../../services/api';
+import { getBooks, getBorrowRecords, getNotifications } from '../../services/api';
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
@@ -16,9 +15,6 @@ export default function StudentDashboard() {
   const [borrowRecords, setBorrowRecords] = useState([]);
   const [books, setBooks] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [scannerOpen, setScannerOpen] = useState(false);
-  const [scanAction, setScanAction] = useState('view');
-  const [scanError, setScanError] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -92,33 +88,6 @@ export default function StudentDashboard() {
       .slice(0, 4);
   }, [books, derived.active]);
 
-  const openScanner = (action) => {
-    setScanAction(action);
-    setScanError('');
-    setScannerOpen(true);
-  };
-
-  const handleScanResult = async (value) => {
-    if (scanAction === 'view') {
-      navigate(`/books/${value}`);
-      return;
-    }
-
-    if (scanAction === 'borrow') {
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + 7);
-      try {
-        await borrowBook({
-          book_id: value,
-          due_date: dueDate.toISOString(),
-        });
-        setScanError('');
-      } catch (requestError) {
-        setScanError(requestError.response?.data?.detail || 'Borrow request failed');
-      }
-    }
-  };
-
   if (loading) {
     return <LoadingState label="Loading student dashboard..." />;
   }
@@ -165,32 +134,6 @@ export default function StudentDashboard() {
             ))}
           </div>
         )}
-      </section>
-
-      <section className="glass-card rounded-2xl p-5 mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold text-white">Quick Scan</h3>
-            <p className="text-xs text-slate-400">Scan a QR code to view details or borrow instantly.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => openScanner('view')}
-              className="rounded-xl bg-cyan-500/20 border border-cyan-300/30 px-4 py-2 text-sm hover:bg-cyan-500/30 flex items-center gap-2"
-            >
-              <ScanLine size={16} />
-              Scan for Details
-            </button>
-            <button
-              onClick={() => openScanner('borrow')}
-              className="rounded-xl bg-emerald-500/20 border border-emerald-300/30 px-4 py-2 text-sm hover:bg-emerald-500/30 flex items-center gap-2"
-            >
-              <ScanLine size={16} />
-              Scan & Borrow (7d)
-            </button>
-          </div>
-        </div>
-        {scanError ? <p className="text-xs text-rose-300 mt-3">{scanError}</p> : null}
       </section>
 
       <section className="glass-card rounded-2xl p-5 mb-6">
@@ -267,13 +210,6 @@ export default function StudentDashboard() {
         )}
       </section>
 
-      <ScannerModal
-        open={scannerOpen}
-        title={scanAction === 'view' ? 'Scan Book QR' : 'Scan Book QR to Borrow'}
-        formats="qr"
-        onResult={handleScanResult}
-        onClose={() => setScannerOpen(false)}
-      />
     </div>
   );
 }

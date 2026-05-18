@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { auth } from '../firebase';
-import { apiCache, cachedRequest, APICache } from './cache';
+import { cachedRequest, APICache, invalidateCachePattern } from './cache';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
@@ -40,17 +40,156 @@ const isNotFound = (error) => {
 
 const withResponseData = (response, data) => ({ ...response, data });
 
-const normalizeBorrowRecords = (records) =>
-  records.map((record) => ({
+const BORROW_STATUS_MAP = {
+  borrowed: 'Borrowed',
+  issued: 'Borrowed',
+  overdue: 'Overdue',
+  returned: 'Returned',
+  reserved: 'Reserved',
+};
+
+const ACTIVE_BORROW_STATUSES = new Set(['Borrowed', 'Overdue']);
+
+const toTimestamp = (value) => {
+  if (!value) {
+    return 0;
+  }
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const canonicalBorrowStatus = (status) => {
+  if (!status || typeof status !== 'string') {
+    return '';
+  }
+  const trimmed = status.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const mapped = BORROW_STATUS_MAP[trimmed.toLowerCase()];
+  return mapped || trimmed;
+};
+
+const resolveBorrowStatus = (rawStatus, dueDate, returnDate) => {
+  const canonical = canonicalBorrowStatus(rawStatus);
+  if (canonical === 'Returned' || returnDate) {
+    return 'Returned';
+  }
+  if (canonical === 'Reserved') {
+    return 'Reserved';
+  }
+
+  const dueTimestamp = toTimestamp(dueDate);
+  if (dueTimestamp > 0 && dueTimestamp < Date.now()) {
+    return 'Overdue';
+  }
+  return canonical || 'Borrowed';
+};
+
+const normalizeBorrowRecord = (record) => {
+  if (!record || typeof record !== 'object') {
+    return null;
+  }
+
+  const normalized = {
     ...record,
     _id: record._id || record.id,
-    borrow_date: record.borrow_date || record.issue_date,
-    due_date: record.due_date,
+    borrow_date: record.borrow_date || record.issue_date || null,
+    due_date: record.due_date || null,
     return_date: record.return_date ?? null,
     student_name: record.student_name || record.student_id || 'Unknown Student',
     book_title: record.book_title || record.book_id || 'Unknown Book',
     category: record.category || 'General',
-  }));
+  };
+  normalized.status = resolveBorrowStatus(normalized.status, normalized.due_date, normalized.return_date);
+  normalized.is_active = ACTIVE_BORROW_STATUSES.has(normalized.status);
+  return normalized;
+};
+
+const normalizeBorrowRecords = (records) => {
+  if (!Array.isArray(records)) {
+    return [];
+  }
+
+  const byId = new Map();
+  for (const raw of records) {
+    const record = normalizeBorrowRecord(raw);
+    if (!record) {
+      continue;
+    }
+
+    const key = record._id || `${record.student_id || 'student'}:${record.book_id || 'book'}:${record.borrow_date || ''}`;
+    const existing = byId.get(key);
+    if (!existing) {
+      byId.set(key, record);
+      continue;
+    }
+
+    const existingUpdatedAt = toTimestamp(existing.updated_at);
+    const candidateUpdatedAt = toTimestamp(record.updated_at);
+    if (candidateUpdatedAt >= existingUpdatedAt) {
+      byId.set(key, record);
+    }
+  }
+
+  return [...byId.values()].sort((a, b) => toTimestamp(b.borrow_date) - toTimestamp(a.borrow_date));
+};
+
+const filterBorrowRecordsByStatus = (records, statusFilter) => {
+  if (!statusFilter || typeof statusFilter !== 'string') {
+    return records;
+  }
+
+  const normalized = statusFilter.trim().toLowerCase();
+  if (!normalized || normalized === 'all') {
+    return records;
+  }
+
+  if (normalized === 'active') {
+    return records.filter((record) => record.is_active);
+  }
+
+  const target = canonicalBorrowStatus(normalized);
+  if (!target) {
+    return records;
+  }
+
+  return records.filter((record) => record.status === target);
+};
+
+const invalidateBorrowingCaches = () => {
+  invalidateCachePattern('GET:/borrow-records');
+  invalidateCachePattern('GET:/books');
+  invalidateCachePattern('GET:/admin/metrics');
+  invalidateCachePattern('GET:/admin/analytics');
+};
+
+const withNormalizedBorrowRecord = (response) => {
+  const normalized = normalizeBorrowRecord(response?.data);
+  return withResponseData(response, normalized || response.data);
+};
+
+const isAlreadyReturnedError = (error) => {
+  const status = error?.response?.status;
+  const detail = (error?.response?.data?.detail || error?.message || '').toString().toLowerCase();
+  return status === 400 && detail.includes('already returned');
+};
+
+const isNoActiveBorrowError = (error) => {
+  const status = error?.response?.status;
+  const detail = (error?.response?.data?.detail || error?.message || '').toString().toLowerCase();
+  return status === 404 && detail.includes('no active borrow record');
+};
+
+const buildSyntheticReturnResponse = (borrowRecordId) =>
+  withResponseData(
+    { data: {} },
+    normalizeBorrowRecord({
+      _id: borrowRecordId,
+      status: 'Returned',
+      return_date: new Date().toISOString(),
+    })
+  );
 
 const normalizeBook = (book) => {
   if (!book || typeof book !== 'object') {
@@ -96,14 +235,6 @@ const normalizeAdminMetrics = (data) => {
     total_borrow_records: data.metrics.total_borrow_records ?? 0,
   };
 };
-
-const buildStatusFromAnalytics = (analytics) => ({
-  database_connected: true,
-  message: 'Connected (derived from analytics endpoint)',
-  total_users: analytics?.metrics?.active_students ?? analytics?.total_students ?? 0,
-  total_books: analytics?.metrics?.total_books ?? analytics?.total_books ?? 0,
-  total_borrow_records: analytics?.metrics?.total_borrow_records ?? analytics?.total_borrow_records ?? 0,
-});
 
 async function requestWithFallback(requests) {
   let lastNotFoundError;
@@ -200,20 +331,24 @@ export const borrowBook = async (payload) => {
     () => api.post('/borrow', processedPayload),
   ]);
   
-  // Invalidate related caches after borrowing
-  apiCache.clear(); // Clear all to ensure fresh data
-  return response;
+  invalidateBorrowingCaches();
+  return withNormalizedBorrowRecord(response);
 };
 
 export const reserveBook = async (payload) => 
   requestWithFallback([
     () => api.post('/api/reserve', payload),
     () => api.post('/reserve', payload),
-  ]);
+  ]).then((response) => {
+    invalidateBorrowingCaches();
+    return withNormalizedBorrowRecord(response);
+  });
 
 export const getBorrowRecords = async (params = {}) => {
-  const { status, ...serverParams } = params || {};
-  const cacheKey = APICache.generateKey('GET', '/borrow-records', { status, ...serverParams });
+  const { status, ...restParams } = params || {};
+  const statusToken = typeof status === 'string' ? status.trim() : '';
+  const serverParams = { ...restParams };
+  const cacheKey = APICache.generateKey('GET', '/borrow-records', serverParams);
   
   const dualPrefix = await cachedRequest(
     () => requestWithFallback([
@@ -229,39 +364,74 @@ export const getBorrowRecords = async (params = {}) => {
   );
   
   let records = normalizeBorrowRecords(dualPrefix.data || []);
-  if (status) {
-    const now = new Date();
-    records = records.filter((record) => {
-      if (record.status === status) {
-        return true;
-      }
-      if (status === 'Overdue' && record.status === 'Borrowed' && record.due_date) {
-        return new Date(record.due_date) < now;
-      }
-      return false;
-    });
-  }
+  records = filterBorrowRecordsByStatus(records, statusToken);
   return withResponseData(dualPrefix, records);
 };
 
 export const returnBook = async (borrowRecordId) => {
-  const response = await requestWithFallback([
+  const requests = [
     () => api.post('/api/return', { borrow_record_id: borrowRecordId }),
     () => api.post('/return', { borrow_record_id: borrowRecordId }),
     () => api.put(`/api/borrow/return/${borrowRecordId}`),
     () => api.put(`/borrow/return/${borrowRecordId}`),
-  ]);
-  
-  // Invalidate related caches after returning
-  apiCache.clear();
-  return response;
+  ];
+
+  try {
+    const response = await requestWithFallback(requests);
+    invalidateBorrowingCaches();
+    return withNormalizedBorrowRecord(response);
+  } catch (error) {
+    if (isAlreadyReturnedError(error)) {
+      invalidateBorrowingCaches();
+      return buildSyntheticReturnResponse(borrowRecordId);
+    }
+
+    if (error?.response?.status === 500) {
+      try {
+        const retry = await requestWithFallback(requests);
+        invalidateBorrowingCaches();
+        return withNormalizedBorrowRecord(retry);
+      } catch (retryError) {
+        if (isAlreadyReturnedError(retryError)) {
+          invalidateBorrowingCaches();
+          return buildSyntheticReturnResponse(borrowRecordId);
+        }
+        throw retryError;
+      }
+    }
+
+    throw error;
+  }
 };
 
 export const returnBookByBookId = (bookId) =>
   requestWithFallback([
     () => api.post(`/api/return-by-book/${bookId}`),
     () => api.post(`/return-by-book/${bookId}`),
-  ]);
+  ])
+    .then((response) => {
+      invalidateBorrowingCaches();
+      return withNormalizedBorrowRecord(response);
+    })
+    .catch(async (error) => {
+      if (error?.response?.status === 500) {
+        try {
+          const retry = await requestWithFallback([
+            () => api.post(`/api/return-by-book/${bookId}`),
+            () => api.post(`/return-by-book/${bookId}`),
+          ]);
+          invalidateBorrowingCaches();
+          return withNormalizedBorrowRecord(retry);
+        } catch (retryError) {
+          if (isNoActiveBorrowError(retryError)) {
+            invalidateBorrowingCaches();
+            return withResponseData({ data: {} }, { status: 'Returned' });
+          }
+          throw retryError;
+        }
+      }
+      throw error;
+    });
 
 export const markBorrowReturned = (borrowRecordId) =>
   requestWithFallback([
@@ -269,7 +439,38 @@ export const markBorrowReturned = (borrowRecordId) =>
     () => api.put(`/borrow-records/${borrowRecordId}/mark-returned`),
     () => api.put(`/api/admin/borrow-history/${borrowRecordId}/mark-returned`),
     () => api.put(`/admin/borrow-history/${borrowRecordId}/mark-returned`),
-  ]);
+  ])
+    .then((response) => {
+      invalidateBorrowingCaches();
+      return withNormalizedBorrowRecord(response);
+    })
+    .catch(async (error) => {
+      if (isAlreadyReturnedError(error)) {
+        invalidateBorrowingCaches();
+        return buildSyntheticReturnResponse(borrowRecordId);
+      }
+
+      if (error?.response?.status === 500) {
+        try {
+          const retry = await requestWithFallback([
+            () => api.put(`/api/borrow-records/${borrowRecordId}/mark-returned`),
+            () => api.put(`/borrow-records/${borrowRecordId}/mark-returned`),
+            () => api.put(`/api/admin/borrow-history/${borrowRecordId}/mark-returned`),
+            () => api.put(`/admin/borrow-history/${borrowRecordId}/mark-returned`),
+          ]);
+          invalidateBorrowingCaches();
+          return withNormalizedBorrowRecord(retry);
+        } catch (retryError) {
+          if (isAlreadyReturnedError(retryError)) {
+            invalidateBorrowingCaches();
+            return buildSyntheticReturnResponse(borrowRecordId);
+          }
+          throw retryError;
+        }
+      }
+
+      throw error;
+    });
 
 export const extendBorrow = (borrowRecordId, dueDate) =>
   requestWithFallback([
@@ -277,7 +478,10 @@ export const extendBorrow = (borrowRecordId, dueDate) =>
     () => api.put(`/borrow-records/${borrowRecordId}/extend`, { due_date: dueDate }),
     () => api.put(`/api/admin/borrow-history/${borrowRecordId}/extend`, { due_date: dueDate }),
     () => api.put(`/admin/borrow-history/${borrowRecordId}/extend`, { due_date: dueDate }),
-  ]);
+  ]).then((response) => {
+    invalidateBorrowingCaches();
+    return withNormalizedBorrowRecord(response);
+  });
 
 export const deleteBorrowRecord = (borrowRecordId) =>
   requestWithFallback([
@@ -285,7 +489,10 @@ export const deleteBorrowRecord = (borrowRecordId) =>
     () => api.delete(`/borrow-records/${borrowRecordId}`),
     () => api.delete(`/api/admin/borrow-history/${borrowRecordId}`),
     () => api.delete(`/admin/borrow-history/${borrowRecordId}`),
-  ]);
+  ]).then((response) => {
+    invalidateBorrowingCaches();
+    return response;
+  });
 
 export const createManualBorrowRecord = (payload) =>
   requestWithFallback([
@@ -293,7 +500,10 @@ export const createManualBorrowRecord = (payload) =>
     () => api.post('/borrow-records/manual', payload),
     () => api.post('/api/admin/borrow-history/manual', payload),
     () => api.post('/admin/borrow-history/manual', payload),
-  ]);
+  ]).then((response) => {
+    invalidateBorrowingCaches();
+    return withNormalizedBorrowRecord(response);
+  });
 
 export const getUsers = (params = {}) =>
   requestWithFallback([

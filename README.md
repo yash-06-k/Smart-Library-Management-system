@@ -85,3 +85,24 @@ This repo includes `render.yaml` and `frontend/vercel.json` so deployments are r
 2. Enable **Firestore Database** (production mode or test mode).
 3. Generate a Service Account key (Project Settings -> Service accounts -> Generate new private key).
 4. Paste the JSON into the Render environment variable `FIREBASE_CREDENTIALS`.
+
+---
+
+## Borrow System Verification
+
+Use the built-in flow checker before releasing:
+
+```bash
+python backend/scripts/verify_borrow_flow.py --base-url https://your-backend.onrender.com
+```
+
+What it validates:
+- Borrow record is created.
+- Book `available_copies` decreases by 1 on borrow.
+- Return is accepted (including idempotent re-run behavior).
+- Book `available_copies` restores after return.
+- Borrow record appears in history listing.
+
+For librarian diagnostics, use:
+- `GET /borrow/health`
+- `GET /api/borrow/health`
